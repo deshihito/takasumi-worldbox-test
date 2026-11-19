@@ -8,13 +8,17 @@ const client = fs.readFileSync(
   path.join(rootDir, "src/app/games/worldbox/WorldBoxClient.tsx"),
   "utf8",
 );
+const mapModal = fs.readFileSync(
+  path.join(rootDir, "src/app/games/worldbox/WorldBoxMapModal.tsx"),
+  "utf8",
+);
 
-test("マップ表示モードの状態とキャンバスがある", () => {
+test("マップ表示モードの状態とモーダル（WorldBoxMapModal）がある", () => {
   assert.match(client, /mapView/);
-  assert.match(client, /bigMapRef/);
-  assert.match(client, /BIGMAP_SIZE = 512/);
-  assert.match(client, /BIGMAP_TILES = 256/);
-  assert.match(client, /paintLocalTerrain\(bigTerrainCanvas/);
+  assert.match(client, /<WorldBoxMapModal/);
+  assert.match(mapModal, /CANVAS_SIZE = 512/);
+  assert.match(mapModal, /256 \| 512 \| 1024/);
+  assert.match(mapModal, /tileAt\(/);
 });
 
 test("ミニマップもプレイヤー中心の周辺図（全体図ではない）", () => {
@@ -24,14 +28,14 @@ test("ミニマップもプレイヤー中心の周辺図（全体図ではな�
   assert.ok(!client.includes("全体マップ"), "全体マップ表記が残っている");
 });
 
-test("大きなマップにもマーカーを描く（首都・他プレイヤー・自分。建物マーカーは廃止）", () => {
-  assert.match(client, /bigTerrainCanvas/);
-  assert.match(client, /nationsRef\.current\.nations/);
-  assert.match(client, /others\.values\(\)/);
+test("大きなマップにもマーカーを描く（首都・生活圏・他プレイヤー・自分・ピン）", () => {
+  assert.match(mapModal, /nations/);
+  assert.match(mapModal, /settlementsNear/);
+  assert.match(mapModal, /visiblePlayers/);
   assert.ok(!client.includes("buildingsRef"), "建物マーカーが残っている");
 });
 
-test("左上の ≡ メニューから開ける（ボタン行には統合済み）", () => {
+test("左上の ≡ メニューおよび M キー・ミニマップクリックから開ける", () => {
   assert.match(client, /id: "mapview"/);
   assert.match(client, /label: mapView \? "マップを閉じる" : "マップを見る"/);
   assert.ok(!client.includes("黄色い丸 = あなた"), "マップの凡例（説明文）が残っている");

@@ -704,13 +704,43 @@ export default function WorldBoxPrisonPanel({
               </div>
             </>
           ) : (
-            <div className="wb-mmo-card">
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>🏛 タカスミ中央矯正施設 案内</div>
-              <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.6 }}>
-                ・犯罪を実行するには、銀行大金庫室・ATM・ハーバー桟橋などの現場まで実際に移動してセキュリティを突破する必要があります。
-                <br />
-                ・失敗・現行犯逮捕または警察追跡逮捕で独房へ収監され、東棟ワークプレスでの減刑労役や南西ダクトからのステルス脱獄、公開法廷控訴を行えます。
-              </div>
+            <div className="wb-mmo-step-grid">
+              <button
+                type="button"
+                className="wb-mmo-card"
+                style={{ textAlign: "left", cursor: "pointer" }}
+                onClick={() => setTab("crime")}
+              >
+                <div style={{ fontWeight: 800, color: "#fca5a5" }}>💣 STEP 1 現地犯行</div>
+                <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <span className="wb-mmo-stat-chip">🏦 金庫/ATM</span>
+                  <span className="wb-mmo-stat-chip">🔐 PIN解除</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="wb-mmo-card"
+                style={{ textAlign: "left", cursor: "pointer" }}
+                onClick={() => setTab("police")}
+              >
+                <div style={{ fontWeight: 800, color: "#38bdf8" }}>🚓 STEP 2 追跡・逮捕</div>
+                <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <span className="wb-mmo-stat-chip">距離 &lt;= 6.5m</span>
+                  <span className="wb-mmo-stat-chip">★ 賞金確保</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="wb-mmo-card"
+                style={{ textAlign: "left", cursor: "pointer" }}
+                onClick={() => setTab("inmates")}
+              >
+                <div style={{ fontWeight: 800, color: "#4ade80" }}>⚒ STEP 3 懲役・脱獄</div>
+                <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <span className="wb-mmo-stat-chip">🏭 (35,9)工場</span>
+                  <span className="wb-mmo-stat-chip">🕳 (4,27)ダクト</span>
+                </div>
+              </button>
             </div>
           )}
 
@@ -729,9 +759,13 @@ export default function WorldBoxPrisonPanel({
 
       {tab === "crime" && data && (
         <div style={{ display: "grid", gap: 8 }}>
-          <div style={{ fontSize: 11.5, color: "#fca5a5" }}>
-            ⚠
-            犯行は該当現場（金庫室・ATM・桟橋・証券端末・人混み）へ近づいた状態でのみ開始できます。金庫破り・ATMハッキングは暗証ダイヤル解除挑戦つき！
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <span className="wb-mmo-stat-chip" style={{ borderColor: "#f87171", color: "#fecaca" }}>
+              📍 現場接近必須 (&lt;= 4.5m)
+            </span>
+            <span className="wb-mmo-stat-chip" style={{ borderColor: "#fbbf24", color: "#fef08a" }}>
+              🔐 金庫/ATM: 認証シーケンス挑戦
+            </span>
           </div>
           {data.crimes.map((crime) => {
             const spots = data.crimeSpots?.[crime.id] ?? [];

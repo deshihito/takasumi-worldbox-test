@@ -479,21 +479,24 @@ export default function WorldBoxMetroPanel({
 
       {tab === "garage" && (
         <div style={{ display: "grid", gap: 10 }}>
-          <div className="wb-mmo-card">
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>
-              🚗 乗用・配達・パトロール車両ガレージ
-            </div>
-            <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
-              「機械制作ラボ」で乗り物をクラフトすると、ここからいつでも乗車できます。道路（舗装タイル）ではさらに高速移動し、配達報酬や追跡効率も上昇します。
-            </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <span className="wb-mmo-stat-chip">🚗 最大速度 9.8</span>
+            <span className="wb-mmo-stat-chip">🛣️ 舗装道路 +6%</span>
+            <span className="wb-mmo-stat-chip">📦 配達報酬ボーナス</span>
+            <span className="wb-mmo-stat-chip">🚨 サイレン懸賞+20%</span>
           </div>
 
           {ownedVehicles.length === 0 ? (
             <div
               className="wb-mmo-card"
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+              }}
             >
-              <span>所持している車両がまだありません。機械制作ラボで作れます！</span>
+              <span>所持車両なし — 機械制作ラボで製作できます</span>
               <button
                 type="button"
                 className="wb-mmo-btn wb-mmo-btn-cyan"
@@ -509,17 +512,49 @@ export default function WorldBoxMetroPanel({
             ownedVehicles.map((vid) => {
               const sp = vehicleSpecs[vid];
               const isEq = equippedVehicle === vid;
+              const speedPct = Math.min(100, Math.round(((sp?.speed ?? 7.5) / 10) * 100));
               return (
                 <div
                   key={vid}
                   className="wb-mmo-card"
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 800 }}>{sp?.name ?? vid}</div>
-                    <div style={{ fontSize: 11.5, color: "#94a3b8" }}>
-                      最高巡航速度 {sp?.speed ?? 8} / 配達報酬+{sp?.deliveryBonusPct ?? 0}%
-                      {sp?.hasSiren ? " / 🚨パトカー懸賞+20%" : ""}
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
+                    >
+                      <strong>{sp?.name ?? vid}</strong>
+                      <span className="wb-mmo-stat-chip">配達 +{sp?.deliveryBonusPct ?? 0}%</span>
+                      {sp?.hasSiren && (
+                        <span
+                          className="wb-mmo-stat-chip"
+                          style={{ borderColor: "#f87171", color: "#fecaca" }}
+                        >
+                          🚨 懸賞 +20%
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        height: 6,
+                        borderRadius: 4,
+                        background: "rgba(255,255,255,0.1)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${speedPct}%`,
+                          height: "100%",
+                          background: sp?.bodyColor ?? "#38bdf8",
+                        }}
+                      />
                     </div>
                   </div>
                   <button

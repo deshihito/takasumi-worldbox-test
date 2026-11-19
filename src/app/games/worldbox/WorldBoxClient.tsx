@@ -315,6 +315,19 @@ import {
   prisonTileAt,
 } from "@/lib/worldbox/world/prison-map";
 import { ItemSlot as ItemSlotView, ItemSlotGrid } from "./ItemSlotGrid";
+import WorldBoxMapModal, { paintIndoorMapCanvas, type MapSnapshot } from "./WorldBoxMapModal";
+import {
+  evaluateCitizenPose,
+  nearestSettlement,
+  settlementRoadAt,
+  settlementsNear,
+} from "@/lib/worldbox/world/settlements";
+import {
+  loadLocalMapPins,
+  saveLocalMapPins,
+  type MapPin,
+  type TrackedTarget,
+} from "@/lib/worldbox/world/map-pins";
 
 const SAVE_KEY = "taka-worldbox-save-v6";
 const TILE = 44;
@@ -360,7 +373,7 @@ const COMPASS_DUNGEON_COLOR = "#b07fe8";
 
 function drawCompassOnMinimap(
   mctx: CanvasRenderingContext2D,
-  target: CompassTarget | null,
+  target: { x: number; y: number } | null,
   color: string,
   ox: number,
   oy: number,
@@ -423,10 +436,6 @@ function updateCompassHud(
       : "—";
   }
 }
-
-const BIGMAP_SIZE = 512;
-const BIGMAP_TILES = 256;
-const BIGMAP_SCALE = BIGMAP_SIZE / BIGMAP_TILES;
 
 type PlayerState = {
   x: number;
@@ -969,9 +978,6 @@ export default function WorldBoxClient() {
   const [showEconomy, setShowEconomy] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
   const [mapView, setMapView] = useState(false);
-  const mapViewRef = useRef(false);
-  mapViewRef.current = mapView;
-  const bigMapRef = useRef<HTMLCanvasElement | null>(null);
   const [porterUi, setPorterUi] = useState<{ x: number; y: number } | null>(null);
   const porterRef = useRef<{ x: number; y: number } | null>(null);
   porterRef.current = porterUi;
@@ -1101,19 +1107,88 @@ export default function WorldBoxClient() {
   const [equippedVehicle, setEquippedVehicle] = useState<VehicleItemId | null>(null);
   const equippedVehicleRef = useRef<VehicleItemId | null>(null);
   equippedVehicleRef.current = equippedVehicle;
-  const [waypoint, setWaypoint] = useState<{
-    space: string;
-    x: number;
-    y: number;
-    label: string;
-  } | null>(null);
-  const waypointRef = useRef<{
-    space: string;
-    x: number;
-    y: number;
-    label: string;
-  } | null>(null);
-  waypointRef.current = waypoint;
+  const [mapPins, setMapPins] = useState<MapPin[]>([]);
+  const mapPinsRef = useRef<MapPin[]>([]);
+  mapPinsRef.current = mapPins;
+  useEffect(() => {
+    setMapPins(loadLocalMapPins());
+  }, []);
+  const [trackedTarget, setTrackedTarget] = useState<TrackedTarget | null>(null);
+  const trackedTargetRef = useRef<TrackedTarget | null>(null);
+  trackedTargetRef.current = trackedTarget;
+  const trackedDistElRef = useRef<HTMLSpanElement | null>(null);
+  const worldFloatTextsRef = useRef<
+    { x: number; y: number; space: string; text: string; color: string; startedAt: number }[]
+  >([]);
+  const pushFloatText = (x: number, y: number, text: string, color = "#facc15") => {
+    worldFloatTextsRef.current.push({
+      x,
+      y,
+      space: spaceUiRef.current,
+      text,
+      color,
+      startedAt: performance.now(),
+    });
+  };
+  const addMapPin = (pin: Omit<MapPin, "id" | "createdAt">) => {
+    const entry: MapPin = {
+      ...pin,
+      id: `pin_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: Date.now(),
+    };
+    setMapPins((prev) => {
+      const next = [entry, ...prev].slice(0, 40);
+      saveLocalMapPins(next);
+      return next;
+    });
+    setTrackedTarget({
+      kind: "pin",
+      space: entry.space,
+      x: entry.x,
+      y: entry.y,
+      label: `${entry.icon} ${entry.label}`,
+      color: entry.color,
+      pinId: entry.id,
+    });
+    pushFloatText(entry.x, entry.y - 0.5, `${entry.icon} ${entry.label}`, entry.color);
+  };
+  const deleteMapPin = (id: string) => {
+    setMapPins((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      saveLocalMapPins(next);
+      return next;
+    });
+    setTrackedTarget((cur) => (cur?.kind === "pin" && cur.pinId === id ? null : cur));
+  };
+  const setWaypoint = (wp: { space: string; x: number; y: number; label: string } | null) => {
+    if (!wp) {
+      setTrackedTarget(null);
+      return;
+    }
+    setTrackedTarget({
+      kind: "job",
+      space: wp.space,
+      x: wp.x,
+      y: wp.y,
+      label: wp.label,
+      color: "#38bdf8",
+    });
+    pushFloatText(
+      playerPosRef.current.x,
+      playerPosRef.current.y - 0.8,
+      `🧭 ${wp.label}`,
+      "#38bdf8",
+    );
+  };
+  const getMapSnapshotRef = useRef<() => MapSnapshot>(() => ({
+    space: "world",
+    playerX: 0,
+    playerY: 0,
+    indoor: null,
+    nations: [],
+    porter: null,
+    players: [],
+  }));
   const forceMoveRef = useRef<((mv: { space: string; x: number; y: number }) => void) | null>(null);
   const refreshMmoRef = useRef<(() => Promise<void>) | null>(null);
   type MmoSummaryState = {
@@ -2965,6 +3040,7 @@ export default function WorldBoxClient() {
     let lastBeat = 0;
     let lastDashFxAt = 0;
     let lastSwimFxAt = 0;
+    let lastDriveFxAt = 0;
     let lastAmbientAt = 0;
     let lastPhaseKind = "";
     const popScaleFor = (key: string, nowMs: number): number => {
@@ -2994,7 +3070,6 @@ export default function WorldBoxClient() {
     };
     let lastSaved = { x: player.x, y: player.y, at: 0 };
     let lastMinimapAt = 0;
-    let lastBigMapAt = 0;
     let compassCache: {
       ax: number;
       ay: number;
@@ -3532,6 +3607,12 @@ export default function WorldBoxClient() {
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (arcadeOpenRef.current) return;
       const k = e.key.toLowerCase();
+      if (!e.repeat && k === "m") {
+        e.preventDefault();
+        playWbSe("open");
+        setMapView((v) => !v);
+        return;
+      }
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
       keys.add(k);
       if (!e.repeat && MOVE_KEYS.has(k)) {
@@ -4050,9 +4131,6 @@ export default function WorldBoxClient() {
     const miniTerrainCanvas = document.createElement("canvas");
     miniTerrainCanvas.width = MINIMAP_TILES;
     miniTerrainCanvas.height = MINIMAP_TILES;
-    const bigTerrainCanvas = document.createElement("canvas");
-    bigTerrainCanvas.width = BIGMAP_TILES;
-    bigTerrainCanvas.height = BIGMAP_TILES;
     const paintLocalTerrain = (target: HTMLCanvasElement, ox: number, oy: number, size: number) => {
       const tctx = target.getContext("2d");
       if (!tctx) return;
@@ -4063,6 +4141,26 @@ export default function WorldBoxClient() {
         }
       }
     };
+    getMapSnapshotRef.current = () => ({
+      space,
+      playerX: player.x,
+      playerY: player.y,
+      indoor: space === "world" ? null : indoorData(),
+      nations: nationsRef.current.nations.map((n) => ({
+        id: n.id,
+        name: n.name,
+        color: n.color,
+        capital: n.capital,
+      })),
+      porter: porterRef.current,
+      players: [...others.values()].map((o) => ({
+        id: o.track.entry.id,
+        name: o.track.entry.name || "プレイヤー",
+        x: o.track.rx,
+        y: o.track.ry,
+        space,
+      })),
+    });
 
     const resize = () => {
       const dpr = Math.min(1.5, window.devicePixelRatio || 1);
@@ -4896,13 +4994,25 @@ export default function WorldBoxClient() {
         lastSwimFxAt = now;
         spawnBurst(fxSys, "step", player.x, player.y, { color: "#7cc0e8" });
       }
+      if (
+        equippedVehicleRef.current &&
+        !playerSwimming &&
+        speed > 2.4 &&
+        now - lastDriveFxAt > 75 &&
+        !reducedMotion
+      ) {
+        lastDriveFxAt = now;
+        spawnBurst(fxSys, "step", player.x - player.vx * 0.04, player.y + 0.05, {
+          color: "#cbd5e1",
+        });
+      }
       playerPosRef.current.x = player.x;
       playerPosRef.current.y = player.y;
 
       const lookX = telescopeCam ? telescopeCam.x : player.x + player.vx * 0.35;
       const lookY = telescopeCam ? telescopeCam.y : player.y + player.vy * 0.35;
-      cam.x = damp(cam.x, lookX, telescopeCam ? 14 : 6, dt);
-      cam.y = damp(cam.y, lookY, telescopeCam ? 14 : 6, dt);
+      cam.x = damp(cam.x, lookX, telescopeCam ? 14 : 7.5, dt);
+      cam.y = damp(cam.y, lookY, telescopeCam ? 14 : 7.5, dt);
 
       const nowMs = Date.now();
       const presenceNowMs = presenceNow();
@@ -4950,6 +5060,38 @@ export default function WorldBoxClient() {
             else {
               ctx.fillStyle = TILE_FALLBACK[id] ?? "#57a639";
               ctx.fillRect(sx, sy, TILE + 1, TILE + 1);
+            }
+          }
+        }
+        {
+          const roadStls = settlementsNear(cam.x, cam.y, 44);
+          for (const stl of roadStls) {
+            const rMinX = Math.max(tx0, stl.cx - stl.radius);
+            const rMaxX = Math.min(tx1, stl.cx + stl.radius);
+            const rMinY = Math.max(ty0, stl.cy - stl.radius);
+            const rMaxY = Math.min(ty1, stl.cy + stl.radius);
+            for (let ty = rMinY; ty <= rMaxY; ty++) {
+              for (let tx = rMinX; tx <= rMaxX; tx++) {
+                const roadKind = settlementRoadAt(stl, tx, ty);
+                if (!roadKind) continue;
+                const roadSx = tileSx(tx);
+                const roadSy = tileSy(ty);
+                if (roadKind === "plaza") {
+                  ctx.fillStyle = "#94a3b8";
+                  ctx.fillRect(roadSx, roadSy, TILE + 1, TILE + 1);
+                  ctx.strokeStyle = "rgba(30,41,59,0.22)";
+                  ctx.lineWidth = 1;
+                  ctx.strokeRect(roadSx + 1, roadSy + 1, TILE - 2, TILE - 2);
+                } else {
+                  ctx.fillStyle = "#475569";
+                  ctx.fillRect(roadSx, roadSy, TILE + 1, TILE + 1);
+                  ctx.fillStyle = "rgba(226,232,240,0.45)";
+                  if (tx === stl.cx && ty % 2 === 0)
+                    ctx.fillRect(roadSx + TILE / 2 - 1, roadSy + 6, 2, TILE - 12);
+                  else if (ty === stl.cy && tx % 2 === 0)
+                    ctx.fillRect(roadSx + 6, roadSy + TILE / 2 - 1, TILE - 12, 2);
+                }
+              }
             }
           }
         }
@@ -5286,6 +5428,181 @@ export default function WorldBoxClient() {
       }
 
       const drawList: { y: number; draw: () => void }[] = [];
+      if (space === "world") {
+        const dayPhase = phaseAtTime(nowMs / 1000);
+        const nightAmt = nightAmount(dayPhase);
+        const nearStls = settlementsNear(cam.x, cam.y, 44);
+        for (const stl of nearStls) {
+          for (const lamp of stl.lamps) {
+            const lx = toScreenX(lamp.x + 0.5);
+            const ly = toScreenY(lamp.y + 0.85);
+            if (lx < -TILE * 2 || ly < -TILE * 2 || lx > cw + TILE * 2 || ly > ch + TILE * 2) {
+              continue;
+            }
+            drawList.push({
+              y: lamp.y + 0.9,
+              draw: () => {
+                ctx.fillStyle = "rgba(10,16,24,0.28)";
+                ctx.beginPath();
+                ctx.ellipse(lx, ly + 2, TILE * 0.18, TILE * 0.08, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#334155";
+                ctx.fillRect(lx - 2, ly - TILE * 0.72, 4, TILE * 0.72);
+                ctx.fillStyle = nightAmt > 0.12 ? "#fde047" : "#cbd5e1";
+                ctx.beginPath();
+                ctx.arc(lx, ly - TILE * 0.78, 5, 0, Math.PI * 2);
+                ctx.fill();
+              },
+            });
+          }
+
+          for (const b of stl.buildings) {
+            const bx = toScreenX(b.x);
+            const by = toScreenY(b.y);
+            const bw = b.w * TILE;
+            const bh = b.h * TILE;
+            if (
+              bx + bw < -TILE * 2 ||
+              by + bh < -TILE * 2 ||
+              bx > cw + TILE * 2 ||
+              by > ch + TILE * 2
+            ) {
+              continue;
+            }
+            drawList.push({
+              y: b.y + b.h,
+              draw: () => {
+                ctx.fillStyle = "rgba(8,12,20,0.28)";
+                ctx.fillRect(bx + 4, by + bh - 4, bw - 4, 8);
+                // Main wall
+                ctx.fillStyle = b.wallColor;
+                ctx.fillRect(bx + 2, by + TILE * 0.45, bw - 4, bh - TILE * 0.45);
+                ctx.strokeStyle = "rgba(15,23,42,0.75)";
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(bx + 2, by + TILE * 0.45, bw - 4, bh - TILE * 0.45);
+                // Roof overhang
+                ctx.fillStyle = b.roofColor;
+                ctx.fillRect(bx, by, bw, TILE * 0.52);
+                ctx.fillStyle = "rgba(255,255,255,0.16)";
+                ctx.fillRect(bx, by, bw, 4);
+                // Windows & door
+                const cols = Math.max(2, b.w);
+                ctx.fillStyle = nightAmt > 0.12 ? "#fde68a" : "#7dd3fc";
+                for (let ci = 0; ci < cols; ci++) {
+                  const wx = bx + 8 + ci * ((bw - 16) / cols);
+                  ctx.fillRect(wx, by + TILE * 0.68, 10, 9);
+                }
+                ctx.fillStyle = "#334155";
+                ctx.fillRect(bx + bw / 2 - 7, by + bh - 16, 14, 16);
+                // Building plate
+                ctx.font = "700 10.5px sans-serif";
+                ctx.textAlign = "center";
+                const tw = Math.min(bw + 24, ctx.measureText(b.label).width + 10);
+                ctx.fillStyle = "rgba(12,18,30,0.82)";
+                ctx.fillRect(bx + bw / 2 - tw / 2, by - 16, tw, 14);
+                ctx.fillStyle = "#f8fafc";
+                ctx.fillText(b.label, bx + bw / 2, by - 5.5);
+              },
+            });
+          }
+
+          for (const cit of stl.citizens) {
+            const pose = evaluateCitizenPose(stl, cit, dayPhase, nowMs);
+            if (pose.sleeping) continue;
+            const sx = toScreenX(pose.x);
+            const sy = toScreenY(pose.y) + TILE * PLAYER_RADIUS;
+            if (sx < -TILE * 3 || sy < -TILE * 3 || sx > cw + TILE * 3 || sy > ch + TILE * 3) {
+              continue;
+            }
+            const nearPlayer = Math.hypot(pose.x - player.x, pose.y - player.y) <= 3.6;
+            const roleSym =
+              cit.role === "guard"
+                ? "🛡"
+                : cit.role === "barista"
+                  ? "☕"
+                  : cit.role === "delivery"
+                    ? "📦"
+                    : cit.role === "engineer"
+                      ? "⚙"
+                      : "🏙";
+            drawList.push({
+              y: pose.y + PLAYER_RADIUS,
+              draw: () => {
+                drawAvatar(
+                  ctx,
+                  sx,
+                  sy,
+                  pose.face,
+                  pose.walkPhase,
+                  Math.min(1, pose.walkSpeed / WALK_SPEED),
+                  cit.name,
+                  cit.shirtColor,
+                  false,
+                  { roleSymbol: roleSym, rank: 1 },
+                  false,
+                  null,
+                );
+                if (nearPlayer && cit.phrases.length > 0) {
+                  const phrase =
+                    cit.phrases[
+                      Math.floor((nowMs / 6500 + cit.phaseOffset) % cit.phrases.length)
+                    ] ?? pose.activity;
+                  ctx.save();
+                  ctx.font = "600 11px sans-serif";
+                  ctx.textAlign = "center";
+                  const btw = ctx.measureText(phrase).width + 14;
+                  const bx0 = sx - btw / 2;
+                  const by0 = sy - TILE * 1.95;
+                  ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+                  ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
+                  ctx.lineWidth = 1.2;
+                  ctx.beginPath();
+                  ctx.roundRect(bx0, by0, btw, 20, 6);
+                  ctx.fill();
+                  ctx.stroke();
+                  ctx.fillStyle = "#e2e8f0";
+                  ctx.fillText(phrase, sx, by0 + 13.5);
+                  ctx.restore();
+                }
+              },
+            });
+          }
+        }
+
+        for (const pin of mapPinsRef.current) {
+          if (pin.space !== "world") continue;
+          const sx = toScreenX(pin.x + 0.5);
+          const sy = toScreenY(pin.y + 0.5);
+          if (sx < -TILE * 2 || sy < -TILE * 2 || sx > cw + TILE * 2 || sy > ch + TILE * 2) {
+            continue;
+          }
+          drawList.push({
+            y: pin.y + 0.7,
+            draw: () => {
+              const bob = Math.sin(now / 260) * 2;
+              ctx.fillStyle = "rgba(8,12,20,0.35)";
+              ctx.beginPath();
+              ctx.ellipse(sx, sy + 2, 7, 3, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = pin.color;
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.arc(sx, sy - 14 + bob, 9, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+              ctx.font = "700 10.5px sans-serif";
+              ctx.textAlign = "center";
+              const label = `${pin.icon} ${pin.label}`;
+              const tw = ctx.measureText(label).width + 8;
+              ctx.fillStyle = "rgba(10,16,28,0.85)";
+              ctx.fillRect(sx - tw / 2, sy - 34 + bob, tw, 14);
+              ctx.fillStyle = "#ffffff";
+              ctx.fillText(label, sx, sy - 23.5 + bob);
+            },
+          });
+        }
+      }
       for (const o of others.values()) {
         const nationColor = nationsRef.current.playerNations[o.track.entry.id]?.color ?? null;
         const oSwim = space === "world" && isWaterAt(worldMap, o.track.rx, o.track.ry);
@@ -5592,40 +5909,53 @@ export default function WorldBoxClient() {
         ctx.restore();
       }
 
-      const wpNow = waypointRef.current;
-      if (wpNow) {
-        const pxScreen =
-          space === "world" ? toScreenX(player.x) : Math.round(lobbyOx + player.x * TILE);
-        const pyScreen =
-          space === "world" ? toScreenY(player.y) : Math.round(lobbyOy + player.y * TILE);
-        if (wpNow.space === space) {
+      const trNow = trackedTargetRef.current;
+      if (trNow) {
+        let txTile: number | null = null;
+        let tyTile: number | null = null;
+        let sameSpace = false;
+        if (trNow.kind === "player") {
+          const otherPl = others.get(trNow.presenceId);
+          if (otherPl) {
+            txTile = otherPl.track.rx;
+            tyTile = otherPl.track.ry;
+            sameSpace = true;
+          }
+        } else if (trNow.space === space) {
+          txTile = trNow.x + 0.5;
+          tyTile = trNow.y + 0.5;
+          sameSpace = true;
+        }
+
+        if (sameSpace && txTile !== null && tyTile !== null) {
+          const pxScreen =
+            space === "world" ? toScreenX(player.x) : Math.round(lobbyOx + player.x * TILE);
+          const pyScreen =
+            space === "world" ? toScreenY(player.y) : Math.round(lobbyOy + player.y * TILE);
           const txScreen =
-            space === "world"
-              ? toScreenX(wpNow.x + 0.5)
-              : Math.round(lobbyOx + (wpNow.x + 0.5) * TILE);
+            space === "world" ? toScreenX(txTile) : Math.round(lobbyOx + txTile * TILE);
           const tyScreen =
-            space === "world"
-              ? toScreenY(wpNow.y + 0.5)
-              : Math.round(lobbyOy + (wpNow.y + 0.5) * TILE);
-          const dist = Math.hypot(wpNow.x + 0.5 - player.x, wpNow.y + 0.5 - player.y);
+            space === "world" ? toScreenY(tyTile) : Math.round(lobbyOy + tyTile * TILE);
+          const dist = Math.hypot(txTile - player.x, tyTile - player.y);
+          if (trackedDistElRef.current) {
+            trackedDistElRef.current.textContent = `${Math.round(dist)}m`;
+          }
           const near = dist <= 4.5;
           const ang = Math.atan2(tyScreen - pyScreen, txScreen - pxScreen);
 
-          // Target pulse ring
           ctx.save();
-          ctx.strokeStyle = near ? "#4ade80" : "#38bdf8";
+          ctx.strokeStyle = near ? "#4ade80" : (trNow.color ?? "#38bdf8");
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.arc(txScreen, tyScreen, TILE * (0.55 + Math.sin(now / 180) * 0.12), 0, Math.PI * 2);
           ctx.stroke();
 
-          // Orbiting compass arrow around player
           if (dist > 2) {
             const ax = pxScreen + Math.cos(ang) * TILE * 1.3;
             const ay = pyScreen + Math.sin(ang) * TILE * 1.3;
             ctx.translate(ax, ay);
             ctx.rotate(ang);
-            ctx.fillStyle = near ? "#4ade80" : "#38bdf8";
+            ctx.fillStyle = near ? "#4ade80" : (trNow.color ?? "#38bdf8");
             ctx.beginPath();
             ctx.moveTo(10, 0);
             ctx.lineTo(-6, -6);
@@ -5635,6 +5965,9 @@ export default function WorldBoxClient() {
             ctx.fill();
           }
           ctx.restore();
+        } else if (trackedDistElRef.current) {
+          trackedDistElRef.current.textContent =
+            trNow.kind === "player" ? "他エリア/圏外" : "別エリア";
         }
       }
 
@@ -6068,11 +6401,55 @@ export default function WorldBoxClient() {
             const ly = Number(key.slice(comma + 1));
             punch(toScreenX(lx + 0.5), toScreenY(ly + 0.5), rTiles);
           }
+          for (const stl of settlementsNear(cam.x, cam.y, 44)) {
+            for (const lamp of stl.lamps) {
+              punch(toScreenX(lamp.x + 0.5), toScreenY(lamp.y + 0.5), 4.6);
+            }
+          }
           dctx.globalCompositeOperation = "source-over";
           ctx.drawImage(dark, 0, 0, cw, ch);
+          for (const stl of settlementsNear(cam.x, cam.y, 44)) {
+            for (const lamp of stl.lamps) {
+              const lsx = toScreenX(lamp.x + 0.5);
+              const lsy = toScreenY(lamp.y + 0.5);
+              const r = TILE * 2.2;
+              if (lsx < -r || lsy < -r || lsx > cw + r || lsy > ch + r) continue;
+              const g = ctx.createRadialGradient(lsx, lsy, 2, lsx, lsy, r);
+              g.addColorStop(0, `rgba(253, 224, 71, ${(night * 0.22).toFixed(3)})`);
+              g.addColorStop(1, "rgba(253, 224, 71, 0)");
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              ctx.arc(lsx, lsy, r, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
         } else {
           ctx.fillStyle = `rgba(9,13,42,${(night * 0.36).toFixed(3)})`;
           ctx.fillRect(0, 0, cw, ch);
+        }
+      }
+
+      if (worldFloatTextsRef.current.length > 0) {
+        worldFloatTextsRef.current = worldFloatTextsRef.current.filter(
+          (f) => now - f.startedAt < 1800,
+        );
+        for (const ft of worldFloatTextsRef.current) {
+          if (ft.space !== space) continue;
+          const age = Math.max(0, Math.min(1, (now - ft.startedAt) / 1800));
+          const sx = space === "world" ? toScreenX(ft.x) : Math.round(lobbyOx + ft.x * TILE);
+          const sy =
+            (space === "world" ? toScreenY(ft.y) : Math.round(lobbyOy + ft.y * TILE)) -
+            age * TILE * 1.15;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, 1 - age * age);
+          ctx.font = "800 13px sans-serif";
+          ctx.textAlign = "center";
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = "rgba(8,12,20,0.88)";
+          ctx.strokeText(ft.text, sx, sy);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, sx, sy);
+          ctx.restore();
         }
       }
       if (space === "world") drawParticles(true);
@@ -6126,138 +6503,157 @@ export default function WorldBoxClient() {
         }
       }
 
-      if (space === "world" && showMapRef.current && now - lastMinimapAt > 200) {
+      if (showMapRef.current && now - lastMinimapAt > 180) {
         lastMinimapAt = now;
         const mm = minimapRef.current;
         const mctx = mm?.getContext("2d");
         if (mm && mctx) {
-          const ox = Math.floor(player.x) - MINIMAP_TILES / 2;
-          const oy = Math.floor(player.y) - MINIMAP_TILES / 2;
-          const toMapX = (wx: number) => (wx - ox) * MINIMAP_SCALE;
-          const toMapY = (wy: number) => (wy - oy) * MINIMAP_SCALE;
-          paintLocalTerrain(miniTerrainCanvas, ox, oy, MINIMAP_TILES);
-          mctx.clearRect(0, 0, mm.width, mm.height);
-          mctx.imageSmoothingEnabled = false;
-          mctx.drawImage(miniTerrainCanvas, 0, 0, mm.width, mm.height);
-          mctx.imageSmoothingEnabled = true;
-          for (const n of nationsRef.current.nations) {
-            const mx = toMapX(n.capital.x);
-            const my = toMapY(n.capital.y);
-            if (mx < -4 || my < -4 || mx > mm.width + 4 || my > mm.height + 4) continue;
-            mctx.fillStyle = n.color;
-            mctx.fillRect(mx - 1, my - 1, 3, 3);
-          }
-          mctx.fillStyle = "#ffffff";
-          for (const o of others.values()) {
-            mctx.fillRect(
-              Math.floor(toMapX(o.track.rx)) - 1,
-              Math.floor(toMapY(o.track.ry)) - 1,
-              2,
-              2,
-            );
-          }
-          mctx.fillStyle = "#ffd23e";
-          mctx.strokeStyle = "rgba(0,0,0,0.6)";
-          mctx.beginPath();
-          mctx.arc(toMapX(player.x), toMapY(player.y), 2.6, 0, Math.PI * 2);
-          mctx.fill();
-          mctx.stroke();
-          if (invRef.current && countItem(invRef.current, "explorer_compass") > 0) {
-            if (
-              !compassCache ||
-              Math.hypot(player.x - compassCache.ax, player.y - compassCache.ay) >= 16
-            ) {
-              const near = nearestEntrances(MAP_SEED, player.x, player.y);
-              compassCache = { ax: player.x, ay: player.y, cave: near.cave, dungeon: near.dungeon };
-            }
-            drawCompassOnMinimap(
+          if (space !== "world") {
+            const indoorPlayers = [...others.values()].map((o) => ({
+              id: o.track.entry.id,
+              name: o.track.entry.name || "プレイヤー",
+              x: o.track.rx,
+              y: o.track.ry,
+              space,
+            }));
+            paintIndoorMapCanvas(
               mctx,
-              compassCache.cave,
-              COMPASS_CAVE_COLOR,
-              ox,
-              oy,
+              mm.width,
+              mm.height,
+              indoorData(),
               player.x,
               player.y,
+              indoorPlayers,
+              space,
+              mapPinsRef.current,
+              trackedTargetRef.current,
+              false,
             );
-            drawCompassOnMinimap(
-              mctx,
-              compassCache.dungeon,
-              COMPASS_DUNGEON_COLOR,
-              ox,
-              oy,
-              player.x,
-              player.y,
-            );
-            updateCompassHud(
-              compassCaveArrowRef.current,
-              compassCaveDistRef.current,
-              compassCache.cave,
-              player.x,
-              player.y,
-            );
-            updateCompassHud(
-              compassDungeonArrowRef.current,
-              compassDungeonDistRef.current,
-              compassCache.dungeon,
-              player.x,
-              player.y,
-            );
-          }
-        }
-      }
+          } else {
+            const ox = Math.floor(player.x) - MINIMAP_TILES / 2;
+            const oy = Math.floor(player.y) - MINIMAP_TILES / 2;
+            const toMapX = (wx: number) => (wx - ox) * MINIMAP_SCALE;
+            const toMapY = (wy: number) => (wy - oy) * MINIMAP_SCALE;
+            paintLocalTerrain(miniTerrainCanvas, ox, oy, MINIMAP_TILES);
+            mctx.clearRect(0, 0, mm.width, mm.height);
+            mctx.imageSmoothingEnabled = false;
+            mctx.drawImage(miniTerrainCanvas, 0, 0, mm.width, mm.height);
+            mctx.imageSmoothingEnabled = true;
 
-      if (space === "world" && mapViewRef.current && now - lastBigMapAt > 200) {
-        lastBigMapAt = now;
-        const bm = bigMapRef.current;
-        const bctx = bm?.getContext("2d");
-        if (bm && bctx) {
-          const ox = Math.floor(player.x) - BIGMAP_TILES / 2;
-          const oy = Math.floor(player.y) - BIGMAP_TILES / 2;
-          const toMapX = (wx: number) => (wx - ox) * BIGMAP_SCALE;
-          const toMapY = (wy: number) => (wy - oy) * BIGMAP_SCALE;
-          paintLocalTerrain(bigTerrainCanvas, ox, oy, BIGMAP_TILES);
-          bctx.clearRect(0, 0, bm.width, bm.height);
-          bctx.imageSmoothingEnabled = false;
-          bctx.drawImage(bigTerrainCanvas, 0, 0, bm.width, bm.height);
-          bctx.imageSmoothingEnabled = true;
-          for (const n of nationsRef.current.nations) {
-            const mx = toMapX(n.capital.x);
-            const my = toMapY(n.capital.y);
-            if (mx < -8 || my < -8 || mx > bm.width + 8 || my > bm.height + 8) continue;
-            bctx.fillStyle = n.color;
-            bctx.strokeStyle = "rgba(255,255,255,0.85)";
-            bctx.fillRect(mx - 3, my - 3, 7, 7);
-            bctx.strokeRect(mx - 3, my - 3, 7, 7);
-          }
-          const porter = porterRef.current;
-          if (porter) {
-            const mx = toMapX(porter.x + 0.5);
-            const my = toMapY(porter.y + 0.5);
-            if (mx >= -8 && my >= -8 && mx <= bm.width + 8 && my <= bm.height + 8) {
-              bctx.fillStyle = "#ffd23e";
-              bctx.strokeStyle = "rgba(255,255,255,0.9)";
-              bctx.beginPath();
-              bctx.moveTo(mx, my - 6);
-              bctx.lineTo(mx + 6, my);
-              bctx.lineTo(mx, my + 6);
-              bctx.lineTo(mx - 6, my);
-              bctx.closePath();
-              bctx.fill();
-              bctx.stroke();
+            for (const stl of settlementsNear(player.x, player.y, 96)) {
+              const mx = toMapX(stl.cx);
+              const my = toMapY(stl.cy);
+              const rPx = Math.max(4, stl.radius * MINIMAP_SCALE * 0.72);
+              mctx.fillStyle =
+                stl.tier === "city"
+                  ? "rgba(56, 189, 248, 0.25)"
+                  : stl.tier === "town"
+                    ? "rgba(251, 191, 36, 0.22)"
+                    : "rgba(167, 139, 250, 0.2)";
+              mctx.beginPath();
+              mctx.arc(mx, my, rPx, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.fillStyle = stl.tier === "city" ? "#38bdf8" : "#fbbf24";
+              mctx.fillRect(mx - 2, my - 2, 4, 4);
+            }
+
+            for (const n of nationsRef.current.nations) {
+              const mx = toMapX(n.capital.x);
+              const my = toMapY(n.capital.y);
+              if (mx < -4 || my < -4 || mx > mm.width + 4 || my > mm.height + 4) continue;
+              mctx.fillStyle = n.color;
+              mctx.fillRect(mx - 1.5, my - 1.5, 3.5, 3.5);
+            }
+
+            for (const pin of mapPinsRef.current) {
+              if (pin.space !== "world") continue;
+              const px = toMapX(pin.x);
+              const py = toMapY(pin.y);
+              if (px < -4 || py < -4 || px > mm.width + 4 || py > mm.height + 4) continue;
+              mctx.fillStyle = pin.color;
+              mctx.strokeStyle = "#ffffff";
+              mctx.lineWidth = 1.2;
+              mctx.beginPath();
+              mctx.arc(px, py, 3, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.stroke();
+            }
+
+            const tr = trackedTargetRef.current;
+            for (const o of others.values()) {
+              const omx = Math.floor(toMapX(o.track.rx));
+              const omy = Math.floor(toMapY(o.track.ry));
+              mctx.fillStyle =
+                tr?.kind === "player" && tr.presenceId === o.track.entry.id ? "#38bdf8" : "#ffffff";
+              mctx.fillRect(omx - 1, omy - 1, 2.5, 2.5);
+            }
+
+            if (tr) {
+              let tPos: { x: number; y: number } | null = null;
+              if (tr.kind === "player") {
+                const targetObj = others.get(tr.presenceId);
+                if (targetObj) tPos = { x: targetObj.track.rx, y: targetObj.track.ry };
+              } else if (tr.space === "world") {
+                tPos = { x: tr.x + 0.5, y: tr.y + 0.5 };
+              }
+              if (tPos) {
+                drawCompassOnMinimap(mctx, tPos, "#38bdf8", ox, oy, player.x, player.y);
+              }
+            }
+
+            mctx.fillStyle = "#ffd23e";
+            mctx.strokeStyle = "rgba(0,0,0,0.6)";
+            mctx.beginPath();
+            mctx.arc(toMapX(player.x), toMapY(player.y), 2.8, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.stroke();
+            if (invRef.current && countItem(invRef.current, "explorer_compass") > 0) {
+              if (
+                !compassCache ||
+                Math.hypot(player.x - compassCache.ax, player.y - compassCache.ay) >= 16
+              ) {
+                const near = nearestEntrances(MAP_SEED, player.x, player.y);
+                compassCache = {
+                  ax: player.x,
+                  ay: player.y,
+                  cave: near.cave,
+                  dungeon: near.dungeon,
+                };
+              }
+              drawCompassOnMinimap(
+                mctx,
+                compassCache.cave,
+                COMPASS_CAVE_COLOR,
+                ox,
+                oy,
+                player.x,
+                player.y,
+              );
+              drawCompassOnMinimap(
+                mctx,
+                compassCache.dungeon,
+                COMPASS_DUNGEON_COLOR,
+                ox,
+                oy,
+                player.x,
+                player.y,
+              );
+              updateCompassHud(
+                compassCaveArrowRef.current,
+                compassCaveDistRef.current,
+                compassCache.cave,
+                player.x,
+                player.y,
+              );
+              updateCompassHud(
+                compassDungeonArrowRef.current,
+                compassDungeonDistRef.current,
+                compassCache.dungeon,
+                player.x,
+                player.y,
+              );
             }
           }
-          bctx.fillStyle = "#ffffff";
-          for (const o of others.values()) {
-            bctx.beginPath();
-            bctx.arc(toMapX(o.track.rx), toMapY(o.track.ry), 2.6, 0, Math.PI * 2);
-            bctx.fill();
-          }
-          bctx.fillStyle = "#ffd23e";
-          bctx.strokeStyle = "rgba(0,0,0,0.65)";
-          bctx.beginPath();
-          bctx.arc(toMapX(player.x), toMapY(player.y), 4.4, 0, Math.PI * 2);
-          bctx.fill();
-          bctx.stroke();
         }
       }
     };
@@ -6471,7 +6867,7 @@ export default function WorldBoxClient() {
     {
       id: "map",
       label: showMap ? "マップを隠す" : "マップを出す",
-      show: spaceUi === "world",
+      show: true,
       run: () => setShowMap((v) => !v),
     },
     {
@@ -6555,7 +6951,7 @@ export default function WorldBoxClient() {
     {
       id: "mapview",
       label: mapView ? "マップを閉じる" : "マップを見る",
-      show: spaceUi === "world",
+      show: true,
       run: () => setMapView((v) => !v),
     },
     { id: "close", label: "閉じる", show: true, run: () => {} },
@@ -6726,6 +7122,12 @@ export default function WorldBoxClient() {
           {othersCount > 0 ? ` ・ いま ${othersCount} 人が歩いている` : ""}
           {spaceUi === "lobby" ? ` ・ ${lobbyDistrictAt(coords.x, coords.y)}` : ""}
           {spaceUi === "prison" ? ` ・ ${prisonDistrictAt(coords.x, coords.y)}` : ""}
+          {spaceUi === "world"
+            ? (() => {
+                const nearStl = nearestSettlement(coords.x, coords.y, 26);
+                return nearStl ? ` ・ 🏙️ ${nearStl.name} (${nearStl.population}人)` : "";
+              })()
+            : ""}
           {` ・ 座標 X ${coords.x} / Y ${coords.y}`}
         </div>
         {mmoFeedText && (
@@ -6748,7 +7150,11 @@ export default function WorldBoxClient() {
         {mmoSummary?.prison.jailed && (
           <div
             className="wb-mmo-prison-banner"
-            style={{ top: "calc(74px + env(safe-area-inset-top, 0px))" }}
+            style={{
+              top: trackedTarget
+                ? "calc(78px + env(safe-area-inset-top, 0px))"
+                : "calc(42px + env(safe-area-inset-top, 0px))",
+            }}
           >
             <span>
               🔒 収監中 ({mmoSummary.prison.cellId}) ・ 残刑期{" "}
@@ -6764,19 +7170,45 @@ export default function WorldBoxClient() {
             </button>
           </div>
         )}
-        {waypoint && (
+        {trackedTarget && (
           <div className="wb-mmo-waypoint" role="status">
-            <span>🧭 目的地: {waypoint.label}</span>
+            <span>
+              {trackedTarget.kind === "player" ? "🎯 追跡中:" : "🧭 目的地:"} {trackedTarget.label}
+            </span>
+            <span
+              ref={trackedDistElRef}
+              style={{ fontVariantNumeric: "tabular-nums", color: "#38bdf8", fontWeight: 800 }}
+            >
+              --m
+            </span>
             <span style={{ fontSize: 11, color: "#94a3b8" }}>
               (
-              {waypoint.space === "world"
-                ? "ワールド"
-                : waypoint.space === "prison"
-                  ? "刑務所"
-                  : "ロビー"}
+              {trackedTarget.kind === "player"
+                ? "リアルタイム"
+                : trackedTarget.space === "world"
+                  ? "ワールド"
+                  : trackedTarget.space === "prison"
+                    ? "刑務所"
+                    : trackedTarget.space === "lobby2"
+                      ? "ロビー2F"
+                      : trackedTarget.space === "lobby3"
+                        ? "ロビー3F"
+                        : "ロビー"}
               )
             </span>
-            <button type="button" className="wb-mmo-waypoint-btn" onClick={() => setWaypoint(null)}>
+            <button
+              type="button"
+              className="wb-mmo-waypoint-btn"
+              onClick={() => setMapView(true)}
+              style={{ borderColor: "rgba(56,189,248,0.45)", color: "#e0f2fe" }}
+            >
+              地図
+            </button>
+            <button
+              type="button"
+              className="wb-mmo-waypoint-btn"
+              onClick={() => setTrackedTarget(null)}
+            >
               案内終了
             </button>
           </div>
@@ -7215,24 +7647,56 @@ export default function WorldBoxClient() {
             {plazaMsg && <span role="status">{plazaMsg}</span>}
           </div>
         )}
-        {showMap && spaceUi === "world" && (
-          <canvas
-            ref={minimapRef}
-            width={MINIMAP_PX}
-            height={MINIMAP_PX}
-            aria-label="周辺マップ"
+        {showMap && (
+          <div
             style={{
               position: "absolute",
               right: "calc(10px + env(safe-area-inset-right, 0px))",
               top: "calc(10px + env(safe-area-inset-top, 0px))",
               width: hud.minimapPx,
               height: hud.minimapPx,
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.35)",
-              background: "rgba(0,0,0,0.25)",
-              pointerEvents: "none",
+              zIndex: 6,
             }}
-          />
+          >
+            <canvas
+              ref={minimapRef}
+              width={MINIMAP_PX}
+              height={MINIMAP_PX}
+              aria-label="周辺マップ"
+              onClick={() => {
+                playWbSe("open");
+                setMapView((v) => !v);
+              }}
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.38)",
+                background: "rgba(9,13,22,0.45)",
+                cursor: "pointer",
+                pointerEvents: "auto",
+                display: "block",
+              }}
+            />
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                right: 4,
+                bottom: 4,
+                padding: "1px 5px",
+                borderRadius: 5,
+                background: "rgba(10, 14, 24, 0.85)",
+                border: "1px solid rgba(56, 189, 248, 0.45)",
+                color: "#e2e8f0",
+                fontSize: 9.5,
+                fontWeight: 800,
+                pointerEvents: "none",
+              }}
+            >
+              M
+            </span>
+          </div>
         )}
         {showMap && spaceUi === "world" && hasCompass && (
           <div
@@ -7648,6 +8112,27 @@ export default function WorldBoxClient() {
                 招待
               </button>
             )}
+            <button
+              type="button"
+              style={{ ...btn, background: "#0369a1", borderColor: "#38bdf8" }}
+              onClick={() => {
+                setTrackedTarget({
+                  kind: "player",
+                  presenceId: playerCard.id,
+                  label: `🏃 ${playerCard.name}`,
+                  color: "#38bdf8",
+                });
+                pushFloatText(
+                  playerPosRef.current.x,
+                  playerPosRef.current.y - 0.8,
+                  `🎯 ${playerCard.name} を追跡`,
+                  "#38bdf8",
+                );
+                setPlayerCard(null);
+              }}
+            >
+              追跡
+            </button>
             <button
               type="button"
               style={{ ...btn, background: "#0284c7", borderColor: "#38bdf8" }}
@@ -8398,63 +8883,25 @@ export default function WorldBoxClient() {
         )}
 
         {mapView && (
-          <div style={panelOverlay} className="wb-panel">
-            <div
-              style={{
-                ...stickyPanelHead,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <strong>マップ</strong>
-              <span className="muted">
-                あなたの座標 X {coords.x} / Y {coords.y}
-              </span>
-              {porterUi && (
-                <button type="button" style={btn} onClick={() => void teleportToPorter()}>
-                  ポーター X {porterUi.x} / Y {porterUi.y}
-                </button>
-              )}
-              <span style={{ flex: 1 }} />
-              <button type="button" style={btn} onClick={() => setMapView(false)}>
-                閉じる
-              </button>
-            </div>
-            <canvas
-              ref={bigMapRef}
-              width={BIGMAP_SIZE}
-              height={BIGMAP_SIZE}
-              aria-label="周辺マップ（大きく表示）"
-              onClick={(e) => {
-                const porter = porterUi;
-                if (!porter) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                if (rect.width <= 0) return;
-                const px = (e.clientX - rect.left) * (BIGMAP_SIZE / rect.width);
-                const py = (e.clientY - rect.top) * (BIGMAP_SIZE / rect.width);
-                const pos = playerPosRef.current;
-                const wx = Math.floor(pos.x) - BIGMAP_TILES / 2 + px / BIGMAP_SCALE;
-                const wy = Math.floor(pos.y) - BIGMAP_TILES / 2 + py / BIGMAP_SCALE;
-                if (
-                  Math.max(Math.abs(wx - (porter.x + 0.5)), Math.abs(wy - (porter.y + 0.5))) <= 3
-                ) {
-                  void teleportToPorter();
-                }
-              }}
-              style={{
-                width: layoutMode === "landscape" ? "min(100%, calc(100svh - 150px))" : "100%",
-                height: "auto",
-                display: "block",
-                marginTop: 10,
-                marginInline: "auto",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.35)",
-                background: "rgba(0,0,0,0.25)",
-              }}
-            />
-          </div>
+          <WorldBoxMapModal
+            getSnapshot={() => getMapSnapshotRef.current()}
+            pins={mapPins}
+            trackedTarget={trackedTarget}
+            onAddPin={addMapPin}
+            onDeletePin={deleteMapPin}
+            onTrackTarget={(target) => {
+              setTrackedTarget(target);
+              pushFloatText(
+                playerPosRef.current.x,
+                playerPosRef.current.y - 0.8,
+                target.kind === "player" ? `🎯 ${target.label} を追跡` : `🧭 ${target.label}`,
+                "#38bdf8",
+              );
+            }}
+            onClearTrack={() => setTrackedTarget(null)}
+            onTeleportPorter={porterUi ? () => void teleportToPorter() : undefined}
+            onClose={() => setMapView(false)}
+          />
         )}
 
         {/* パネルの開閉は左上の ≡ メニューに統合（ボタン行は置かない） */}
