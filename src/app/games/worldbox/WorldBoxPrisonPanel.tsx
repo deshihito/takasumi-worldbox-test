@@ -87,7 +87,10 @@ function fmtSec(ms: number): string {
   return `${m}分${String(rem).padStart(2, "0")}秒`;
 }
 
+export type PrisonFocusMode = "full" | "crime" | "work" | "bail" | "visit" | "escape" | "police";
+
 export default function WorldBoxPrisonPanel({
+  focusMode = "full",
   currentSpace,
   profile,
   onForceMove,
@@ -96,6 +99,7 @@ export default function WorldBoxPrisonPanel({
   onSetWaypoint,
   onClose,
 }: {
+  focusMode?: PrisonFocusMode;
   currentSpace: string;
   profile: PlayerProfile | null;
   onForceMove?: (move: { space: string; x: number; y: number }) => void;
@@ -105,7 +109,15 @@ export default function WorldBoxPrisonPanel({
   onClose: () => void;
 }) {
   const [data, setData] = useState<PrisonApiGetResponse | null>(null);
-  const [tab, setTab] = useState<"status" | "crime" | "police" | "inmates">("status");
+  const [tab, setTab] = useState<"status" | "crime" | "police" | "inmates">(
+    focusMode === "crime"
+      ? "crime"
+      : focusMode === "police"
+        ? "police"
+        : focusMode === "visit"
+          ? "inmates"
+          : "status",
+  );
   const [nowMs, setNowMs] = useState(Date.now());
   const [careTarget, setCareTarget] = useState("");
   const [careItemId, setCareItemId] = useState("bread");
@@ -259,10 +271,27 @@ export default function WorldBoxPrisonPanel({
       <div style={stickyHeaderStyle}>
         <div>
           <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <WbIcon name="scale" size={16} color="#facc15" /> メトロ治安局・タカスミ中央刑務所
+            <WbIcon name="scale" size={16} color="#facc15" />{" "}
+            {focusMode === "crime"
+              ? "金庫潜入・現地強盗オペレーション"
+              : focusMode === "work"
+                ? "刑務所・懲役ワークプレス工場"
+                : focusMode === "bail"
+                  ? "刑務所・保釈および司法窓口"
+                  : focusMode === "visit"
+                    ? "刑務所・面会差し入れカウンター"
+                    : focusMode === "escape"
+                      ? "南西換気ダクト・ステルス脱獄端末"
+                      : focusMode === "police"
+                        ? "メトロ治安局・懸賞手配ディスパッチ"
+                        : "メトロ治安局・タカスミ中央刑務所"}
           </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
-            現地強盗セキュリティ突破・看守潜入脱獄・懲役ワークプレス・警察追跡逮捕
+            {focusMode === "crime"
+              ? "実地セキュリティ突破・報酬確保・逃走リスク管理"
+              : focusMode === "police"
+                ? "指名手配犯・NPC容疑者の現地追跡と逮捕"
+                : "現地強盗セキュリティ突破・看守潜入脱獄・懲役ワークプレス・警察追跡逮捕"}
           </div>
         </div>
         <button type="button" className="wb-mmo-btn" onClick={onClose}>
@@ -332,7 +361,7 @@ export default function WorldBoxPrisonPanel({
                   出所手続き
                 </button>
               )}
-              {!self.jailed && currentSpace !== "prison" && (
+              {!self.jailed && currentSpace !== "prison" && focusMode === "full" && (
                 <button
                   type="button"
                   disabled={busy}
@@ -357,42 +386,44 @@ export default function WorldBoxPrisonPanel({
         </div>
       )}
 
-      <div className="wb-mmo-tabs">
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "status" ? "is-active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          onClick={() => setTab("status")}
-        >
-          <WbIcon name={self?.jailed ? "chain" : "scale"} size={12} color="#cbd5e1" />
-          {self?.jailed ? "獄内生活・脱獄" : "収監状況"}
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab is-warn ${tab === "crime" ? "is-active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          onClick={() => setTab("crime")}
-        >
-          <WbIcon name="bomb" size={12} color="#fca5a5" /> 現地強盗・犯行
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "police" ? "is-active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          onClick={() => setTab("police")}
-        >
-          <WbIcon name="police" size={12} color="#38bdf8" /> 治安局 (
-          {(data?.wanted.length ?? 0) + (data?.npcSuspects.length ?? 0)})
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "inmates" ? "is-active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          onClick={() => setTab("inmates")}
-        >
-          <WbIcon name="handshake" size={12} color="#cbd5e1" /> 面会 ({data?.inmates.length ?? 0})
-        </button>
-      </div>
+      {focusMode === "full" && (
+        <div className="wb-mmo-tabs">
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "status" ? "is-active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            onClick={() => setTab("status")}
+          >
+            <WbIcon name={self?.jailed ? "chain" : "scale"} size={12} color="#cbd5e1" />
+            {self?.jailed ? "獄内生活・脱獄" : "収監状況"}
+          </button>
+          <button
+            type="button"
+            className={`wb-mmo-tab is-warn ${tab === "crime" ? "is-active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            onClick={() => setTab("crime")}
+          >
+            <WbIcon name="bomb" size={12} color="#fca5a5" /> 現地強盗・犯行
+          </button>
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "police" ? "is-active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            onClick={() => setTab("police")}
+          >
+            <WbIcon name="police" size={12} color="#38bdf8" /> 治安局 (
+            {(data?.wanted.length ?? 0) + (data?.npcSuspects.length ?? 0)})
+          </button>
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "inmates" ? "is-active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            onClick={() => setTab("inmates")}
+          >
+            <WbIcon name="handshake" size={12} color="#cbd5e1" /> 面会 ({data?.inmates.length ?? 0})
+          </button>
+        </div>
+      )}
 
       {msg && (
         <div

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onEconomyApplied } from "@/lib/worldbox/economy/economy-push";
 
-type FinanceTab = "fx_spot" | "fx_margin" | "prediction" | "house_pool";
+export type FinanceTab = "fx_spot" | "fx_margin" | "prediction" | "house_pool";
 
 interface FxPairView {
   id: string;
@@ -185,8 +185,18 @@ function Spark({ history }: { history: number[] }) {
   );
 }
 
-export default function WorldBoxFinancePanel({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<FinanceTab>("fx_spot");
+export default function WorldBoxFinancePanel({
+  initialTab,
+  lockedTabs,
+  title,
+  onClose,
+}: {
+  initialTab?: FinanceTab;
+  lockedTabs?: readonly FinanceTab[];
+  title?: string;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<FinanceTab>(initialTab ?? lockedTabs?.[0] ?? "fx_spot");
   const [fx, setFx] = useState<FxResponse | null>(null);
   const [pred, setPred] = useState<PredictionResponse | null>(null);
   const [pool, setPool] = useState<HousePoolResponse | null>(null);
@@ -282,41 +292,47 @@ export default function WorldBoxFinancePanel({ onClose }: { onClose: () => void 
       aria-label="FX・金融・予測市場"
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <strong style={{ fontSize: 16 }}>総合金融・予測マーケット</strong>
+        <strong style={{ fontSize: 16 }}>{title ?? "総合金融・予測マーケット"}</strong>
         {balance !== null && <span style={{ fontSize: 13 }}>残高 {yen(balance)}</span>}
-        {fx && !fx.guest && (
-          <span style={{ fontSize: 12, opacity: 0.8 }}>／ 外貨評価 {yen(fx.walletValueWbc)}</span>
-        )}
+        {fx &&
+          !fx.guest &&
+          (!lockedTabs || lockedTabs.includes("fx_spot") || lockedTabs.includes("fx_margin")) && (
+            <span style={{ fontSize: 12, opacity: 0.8 }}>／ 外貨評価 {yen(fx.walletValueWbc)}</span>
+          )}
         <span style={{ flex: 1 }} />
         <button type="button" style={btn} onClick={onClose}>
           閉じる
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-        {(
-          [
-            ["fx_spot", "FX現物両替"],
-            ["fx_margin", `FX信用 (${fx?.positions.length ?? 0})`],
-            ["prediction", "バイナリー予測市場"],
-            ["house_pool", "胴元LPプール"],
-          ] as const
-        ).map(([t, label]) => (
-          <button
-            key={t}
-            type="button"
-            style={{
-              ...btn,
-              ...(tab === t
-                ? { background: "rgba(255,210,62,0.18)", borderColor: "rgba(255,210,62,0.55)" }
-                : {}),
-            }}
-            onClick={() => setTab(t)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {(!lockedTabs || lockedTabs.length > 1) && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {(
+            [
+              ["fx_spot", "FX現物両替"],
+              ["fx_margin", `FX信用 (${fx?.positions.length ?? 0})`],
+              ["prediction", "バイナリー予測市場"],
+              ["house_pool", "胴元LPプール"],
+            ] as const
+          )
+            .filter(([t]) => !lockedTabs || lockedTabs.includes(t))
+            .map(([t, label]) => (
+              <button
+                key={t}
+                type="button"
+                style={{
+                  ...btn,
+                  ...(tab === t
+                    ? { background: "rgba(255,210,62,0.18)", borderColor: "rgba(255,210,62,0.55)" }
+                    : {}),
+                }}
+                onClick={() => setTab(t)}
+              >
+                {label}
+              </button>
+            ))}
+        </div>
+      )}
 
       {msg && (
         <p

@@ -1,6 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { WbIcon, type WbIconName } from "./WbIcon";
+import {
+  BaristaBrewConsole,
+  CareerInteractiveConsole,
+  DeliveryHandoverConsole,
+} from "./WorldBoxJobMinigames";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import type {
   ActiveDeliveryOrder,
@@ -12,6 +17,8 @@ import type {
   SpatialSpot,
 } from "@/lib/worldbox/social/jobs";
 import { itemById } from "@/lib/worldbox/economy/items";
+
+export type JobFocusMode = "all" | "cafe" | "delivery" | "patrol" | "career";
 
 const overlayStyle: CSSProperties = {
   position: "fixed",
@@ -77,21 +84,24 @@ function distLabel(
 }
 
 export default function WorldBoxJobPanel({
+  focusMode = "all",
   onProfileChange,
   onStatusChange,
   onSetWaypoint,
   onClose,
 }: {
+  focusMode?: JobFocusMode;
   onProfileChange?: (profile: PlayerProfile) => void;
   onStatusChange?: () => void;
   onSetWaypoint?: (wp: { space: string; x: number; y: number; label: string }) => void;
   onClose: () => void;
 }) {
   const [data, setData] = useState<JobsApiGetResponse | null>(null);
-  const [tab, setTab] = useState<"field" | "shift" | "careers" | "certs" | "support">("field");
+  const [tab, setTab] = useState<"field" | "shift" | "careers" | "certs" | "support">(
+    focusMode === "career" ? "shift" : "field",
+  );
   const [categoryFilter, setCategoryFilter] = useState<string>("すべて");
   const [task, setTask] = useState<JobTaskPrompt | null>(null);
-  const [cafeTray, setCafeTray] = useState<string[]>([]);
   const [headline, setHeadline] = useState("");
   const [msg, setMsg] = useState("");
   const [suggestedWp, setSuggestedWp] = useState<{
@@ -193,21 +203,25 @@ export default function WorldBoxJobPanel({
     }
   };
 
-  const handleSubmitShift = async (choiceIndex?: number) => {
+  const handleSubmitShift = async (choiceIndex?: number, skillScore?: number) => {
     const res = await callAction({
       action: "submit_shift",
       ...(typeof choiceIndex === "number" ? { choiceIndex } : {}),
+      ...(typeof skillScore === "number" ? { skillScore } : {}),
     });
     if (!res) return;
     setTask(null);
-    const payout = res.payout as { net?: number; tax?: number; bonusPct?: number } | undefined;
+    const payout = res.payout as
+      | { net?: number; tax?: number; bonusPct?: number; grade?: string }
+      | undefined;
     const drops = (res.drops as string[] | undefined) ?? [];
     const dropLabel =
       drops.length > 0
         ? ` / 支給品: ${drops.map((id) => itemById(id)?.name ?? id).join(", ")}`
         : "";
-    const tag =
-      res.taskCorrect === true
+    const tag = payout?.grade
+      ? `【評価 ${payout.grade}ランク】`
+      : res.taskCorrect === true
         ? "【大成功 1.4x】"
         : res.taskCorrect === false
           ? "【ミス減額】"
@@ -224,6 +238,13 @@ export default function WorldBoxJobPanel({
     data?.careers.find((c) => c.id === jobProfile?.currentCareer) ?? data?.careers[0];
   const categories = ["すべて", "街の商業", "産業・技術", "公共・治安", "金融・情報"];
 
+  const inWorldCafeInterior = Boolean(
+    data &&
+    data.actorPos.space.startsWith("interior:") &&
+    data.actorPos.space.includes(":cafe_") &&
+    Math.hypot(data.actorPos.x - 4.5, data.actorPos.y - 4) <= 5.2,
+  );
+
   // Nearest lobby cafe spot
   const nearestCafe =
     data?.spots.cafe.reduce((best, s) => {
@@ -232,7 +253,9 @@ export default function WorldBoxJobPanel({
       return sd < bd ? s : best;
     }, data.spots.cafe[0]) ?? null;
 
-  const atCafeNow = data && nearestCafe ? distLabel(data.actorPos, nearestCafe).dist <= 4.5 : false;
+  const atCafeNow =
+    inWorldCafeInterior ||
+    (data && nearestCafe ? distLabel(data.actorPos, nearestCafe).dist <= 4.5 : false);
 
   const activeDelivery = jobProfile?.activeDelivery ?? null;
   const deliveryDist =
@@ -254,15 +277,39 @@ export default function WorldBoxJobPanel({
         })
       : null;
 
+  const headerTitle =
+    focusMode === "cafe"
+      ? "カフェカウンター バリスタ実地営業"
+      : focusMode === "delivery"
+        ? "メトロ配送ディスパッチ端末"
+        : focusMode === "patrol"
+          ? "治安パトロール司令端末"
+          : focusMode === "career"
+            ? "キャリア・資格・業務シフトセンター"
+            : "メトロ仕事・現地ワークセンター";
+
+  const showTabs = focusMode === "all" || focusMode === "career";
+
   return (
     <div className="wb-panel" style={overlayStyle}>
       <div style={stickyHeaderStyle}>
         <div>
           <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <WbIcon name="briefcase" size={16} color="#38bdf8" /> メトロ仕事・現地ワークセンター
+            <WbIcon
+              name={
+                focusMode === "cafe" ? "cafe" : focusMode === "delivery" ? "truck" : "briefcase"
+              }
+              size={16}
+              color="#38bdf8"
+            />{" "}
+            {headerTitle}
           </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
-            カフェ実店舗運営・物理配達ルート・警察巡回・12職業キャリア
+            {focusMode === "cafe"
+              ? "注文レシピの計量・9bar抽出タイミング・鮮度コンボでチップ獲得"
+              : focusMode === "delivery"
+                ? "実座標ルート配送・到着バーコード受領スキャン"
+                : "リアルタイム操作コンソール・現地実地ワーク・12職業キャリア"}
           </div>
         </div>
         <button type="button" className="wb-mmo-btn" onClick={onClose}>
@@ -334,47 +381,51 @@ export default function WorldBoxJobPanel({
         </div>
       )}
 
-      <div className="wb-mmo-tabs">
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "field" ? "is-active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          onClick={() => setTab("field")}
-        >
-          <WbIcon name="pin" size={12} color={tab === "field" ? "#38bdf8" : "#cbd5e1"} />{" "}
-          現地実地ワーク
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "shift" ? "is-active" : ""}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-          onClick={() => setTab("shift")}
-        >
-          <WbIcon name="briefcase" size={12} color={tab === "shift" ? "#38bdf8" : "#cbd5e1"} />{" "}
-          業務シフト
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "careers" ? "is-active" : ""}`}
-          onClick={() => setTab("careers")}
-        >
-          転職 ({data?.careers.length ?? 0})
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "certs" ? "is-active" : ""}`}
-          onClick={() => setTab("certs")}
-        >
-          資格 ({jobProfile?.certifications.length ?? 0}/{data?.certifications.length ?? 5})
-        </button>
-        <button
-          type="button"
-          className={`wb-mmo-tab ${tab === "support" ? "is-active" : ""}`}
-          onClick={() => setTab("support")}
-        >
-          保険・統計
-        </button>
-      </div>
+      {showTabs && (
+        <div className="wb-mmo-tabs">
+          {focusMode === "all" && (
+            <button
+              type="button"
+              className={`wb-mmo-tab ${tab === "field" ? "is-active" : ""}`}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+              onClick={() => setTab("field")}
+            >
+              <WbIcon name="pin" size={12} color={tab === "field" ? "#38bdf8" : "#cbd5e1"} />{" "}
+              現地実地ワーク
+            </button>
+          )}
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "shift" ? "is-active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            onClick={() => setTab("shift")}
+          >
+            <WbIcon name="briefcase" size={12} color={tab === "shift" ? "#38bdf8" : "#cbd5e1"} />{" "}
+            実技シフト
+          </button>
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "careers" ? "is-active" : ""}`}
+            onClick={() => setTab("careers")}
+          >
+            転職 ({data?.careers.length ?? 0})
+          </button>
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "certs" ? "is-active" : ""}`}
+            onClick={() => setTab("certs")}
+          >
+            資格 ({jobProfile?.certifications.length ?? 0}/{data?.certifications.length ?? 5})
+          </button>
+          <button
+            type="button"
+            className={`wb-mmo-tab ${tab === "support" ? "is-active" : ""}`}
+            onClick={() => setTab("support")}
+          >
+            保険・統計
+          </button>
+        </div>
+      )}
 
       {msg && (
         <div
@@ -410,184 +461,120 @@ export default function WorldBoxJobPanel({
       {tab === "field" && data && jobProfile && (
         <div style={{ display: "grid", gap: 10 }}>
           {/* 1. Physical Cafe Barista Operations */}
-          <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 6,
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
-                  <WbIcon name="cafe" size={14} color="#fbbf24" />{" "}
-                  現地カフェカウンター営業（実店舗限定）
-                </div>
-                <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                  ロビー内のグルメ店舗（{nearestCafe?.label ?? "西グルメ"} ・ 現在{" "}
-                  {nearestCafe ? distLabel(data.actorPos, nearestCafe).text : "---"}）で直接接客！
-                </div>
-              </div>
-              {nearestCafe && !atCafeNow && onSetWaypoint && (
-                <button
-                  type="button"
-                  className="wb-mmo-btn wb-mmo-btn-cyan"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                  onClick={() => guideTo(nearestCafe)}
-                >
-                  <WbIcon name="compass" size={12} color="#cffafe" /> 最寄りカフェ案内
-                </button>
-              )}
-            </div>
-
-            {jobProfile.activeCafe ? (
+          {(focusMode === "all" || focusMode === "cafe") && (
+            <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
               <div
                 style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  background: "rgba(15,23,42,0.7)",
-                  border: "1px solid rgba(251,191,36,0.35)",
-                  display: "grid",
-                  gap: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 6,
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong
-                    style={{
-                      color: "#fbbf24",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
-                    }}
+                <div>
+                  <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                    <WbIcon name="cafe" size={14} color="#fbbf24" />{" "}
+                    現地カフェカウンター営業（実店舗限定）
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    {inWorldCafeInterior
+                      ? "街角カフェ店内カウンターにて稼働中"
+                      : `最寄り店舗: ${nearestCafe?.label ?? "西グルメ"}（${
+                          nearestCafe ? distLabel(data.actorPos, nearestCafe).text : "---"
+                        }）`}
+                  </div>
+                </div>
+                {nearestCafe && !atCafeNow && onSetWaypoint && (
+                  <button
+                    type="button"
+                    className="wb-mmo-btn wb-mmo-btn-cyan"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                    onClick={() => guideTo(nearestCafe)}
                   >
-                    <WbIcon name="receipt" size={13} color="#fbbf24" />{" "}
-                    {jobProfile.activeCafe.ticket.customerName}「
-                    {jobProfile.activeCafe.ticket.drinkName}」
-                  </strong>
-                  <span style={{ fontSize: 11, opacity: 0.8 }}>
-                    連続提供 {jobProfile.activeCafe.servedCount}杯目
-                  </span>
-                </div>
-                <div style={{ fontSize: 12 }}>
-                  レシピ構成: <b>{jobProfile.activeCafe.ticket.ingredients.join(" + ")}</b>
-                </div>
-                <div style={{ fontSize: 11.5, color: "#38bdf8" }}>
-                  トレイ選択中:{" "}
-                  {cafeTray.length > 0 ? cafeTray.join(" → ") : "（下から素材を順番通りに選択）"}
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {data.cafeIngredients.map((ing) => (
-                    <button
-                      key={ing}
-                      type="button"
-                      disabled={busy || !atCafeNow}
-                      className="wb-mmo-btn"
-                      onClick={() => setCafeTray((prev) => [...prev.slice(-4), ing])}
-                    >
-                      + {ing}
-                    </button>
-                  ))}
-                  <button type="button" className="wb-mmo-btn" onClick={() => setCafeTray([])}>
-                    クリア
+                    <WbIcon name="compass" size={12} color="#cffafe" /> 最寄りカフェ案内
                   </button>
-                </div>
+                )}
+              </div>
+
+              {jobProfile.activeCafe ? (
+                <BaristaBrewConsole
+                  customerName={jobProfile.activeCafe.ticket.customerName}
+                  drinkName={jobProfile.activeCafe.ticket.drinkName}
+                  recipe={jobProfile.activeCafe.ticket.ingredients}
+                  palette={data.cafeIngredients}
+                  servedCount={jobProfile.activeCafe.servedCount}
+                  atCafeNow={atCafeNow}
+                  busy={busy}
+                  onServe={(ingredients, qualityScore) =>
+                    void callAction({
+                      action: "serve_cafe_order",
+                      ingredients,
+                      qualityScore,
+                    }).then((r) => {
+                      if (!r) return;
+                      const tip = Number(r.qualityBonusPct ?? 0);
+                      setMsg(
+                        r.exactMatch
+                          ? `[提供完了] パーフェクト抽出！ 手取 +¥${Number(r.net).toLocaleString()}${
+                              tip > 0 ? `（抽出チップ +${tip}%）` : ""
+                            }`
+                          : `[提供完了] レシピ違いで減額… +¥${Number(r.net).toLocaleString()}`,
+                      );
+                    })
+                  }
+                />
+              ) : (
                 <button
                   type="button"
-                  disabled={busy || !atCafeNow || cafeTray.length === 0}
-                  className="wb-mmo-btn wb-mmo-btn-primary"
+                  disabled={busy || data.jailed || !atCafeNow}
+                  className="wb-mmo-btn wb-mmo-btn-amber"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 5,
                   }}
-                  onClick={() =>
-                    void callAction({ action: "serve_cafe_order", ingredients: cafeTray }).then(
-                      (r) => {
-                        if (!r) return;
-                        setCafeTray([]);
-                        setMsg(
-                          r.exactMatch
-                            ? `[提供完了] パーフェクト提供！ 手取 +¥${Number(r.net).toLocaleString()}（次のお客様が来店中）`
-                            : `[提供完了] レシピ違いで減額… +¥${Number(r.net).toLocaleString()}`,
-                        );
-                      },
-                    )
-                  }
+                  onClick={() => void callAction({ action: "start_cafe" })}
                 >
-                  <WbIcon name={atCafeNow ? "cafe" : "alert"} size={13} />
-                  {atCafeNow ? "カウンターで提供して精算" : "カフェカウンター前で提供できます"}
+                  <WbIcon name="bell" size={13} color="#fef3c7" />
+                  {atCafeNow
+                    ? "カフェカウンターに立って注文を受ける"
+                    : "ロビーまたは街のカフェカウンター前へ移動してください"}
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={busy || data.jailed || !atCafeNow}
-                className="wb-mmo-btn wb-mmo-btn-amber"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 5,
-                }}
-                onClick={() => void callAction({ action: "start_cafe" })}
-              >
-                <WbIcon name="bell" size={13} color="#fef3c7" />
-                {atCafeNow
-                  ? "カフェカウンターに立って注文を受ける"
-                  : "まずロビー内カフェへ移動してください"}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* 2. Physical Coordinate Delivery Route */}
-          <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
-              <WbIcon name="truck" size={14} color="#38bdf8" />{" "}
-              メトロ実地配達ミッション（目的地へ移動・車両ボーナス対応）
-            </div>
-            {activeDelivery ? (
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 12 }}>
-                  ルート: <b>{activeDelivery.title}</b>
-                </div>
-                <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
-                  報酬見込 ¥{activeDelivery.rewardCoins.toLocaleString()}+ ・ 目的地まで{" "}
-                  <b
-                    style={{
-                      color: deliveryDist && deliveryDist.dist <= 4.8 ? "#4ade80" : "#fbbf24",
-                    }}
-                  >
-                    {deliveryDist?.text}
-                  </b>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {onSetWaypoint && (
-                    <button
-                      type="button"
-                      className="wb-mmo-btn wb-mmo-btn-cyan"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                      onClick={() =>
-                        guideTo({
-                          space: activeDelivery.targetSpace,
-                          x: activeDelivery.targetX,
-                          y: activeDelivery.targetY,
-                          label: activeDelivery.targetLabel,
-                        })
-                      }
+          {(focusMode === "all" || focusMode === "delivery") && (
+            <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                <WbIcon name="truck" size={14} color="#38bdf8" />{" "}
+                メトロ実地配達ミッション（目的地へ移動・バーコード受領）
+              </div>
+              {activeDelivery ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12 }}>
+                    ルート: <b>{activeDelivery.title}</b>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
+                    報酬見込 ¥{activeDelivery.rewardCoins.toLocaleString()}+ ・ 目的地まで{" "}
+                    <b
+                      style={{
+                        color: deliveryDist && deliveryDist.dist <= 4.8 ? "#4ade80" : "#fbbf24",
+                      }}
                     >
-                      <WbIcon name="compass" size={12} color="#cffafe" /> 目的地コンパスを表示
-                    </button>
-                  )}
-                  <button
-                    type="button"
+                      {deliveryDist?.text}
+                    </b>
+                  </div>
+                  <DeliveryHandoverConsole
                     disabled={busy || data.jailed}
-                    className="wb-mmo-btn wb-mmo-btn-primary"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                    onClick={() =>
-                      void callAction({ action: "complete_delivery" }).then((r) => {
+                    atDestination={Boolean(
+                      deliveryDist && deliveryDist.sameSpace && deliveryDist.dist <= 4.8,
+                    )}
+                    onDeliver={(qualityScore) =>
+                      void callAction({ action: "complete_delivery", qualityScore }).then((r) => {
                         if (r) {
                           setMsg(
                             `[配達完了] +¥${Number(r.net).toLocaleString()}${
@@ -599,62 +586,7 @@ export default function WorldBoxJobPanel({
                         }
                       })
                     }
-                  >
-                    <WbIcon name="check" size={12} color="#dcfce7" /> 荷物を現地へ納品する
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="wb-mmo-btn"
-                    onClick={() => void callAction({ action: "cancel_active_mission" })}
-                  >
-                    破棄
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={busy || data.jailed}
-                className="wb-mmo-btn wb-mmo-btn-cyan"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 5,
-                }}
-                onClick={() =>
-                  void callAction({ action: "start_delivery" }).then((r) => {
-                    const d = r?.delivery as ActiveDeliveryOrder | undefined;
-                    if (d && onSetWaypoint) {
-                      guideTo({
-                        space: d.targetSpace,
-                        x: d.targetX,
-                        y: d.targetY,
-                        label: d.targetLabel,
-                      });
-                    }
-                  })
-                }
-              >
-                <WbIcon name="package" size={13} color="#cffafe" /> 配送ルートを受注して出発する
-              </button>
-            )}
-          </div>
-
-          {/* 3. Police Beat Patrol */}
-          {(jobProfile.currentCareer === "police" ||
-            jobProfile.certifications.includes("security_officer")) && (
-            <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
-                <WbIcon name="police" size={14} color="#38bdf8" />{" "}
-                治安維持パトロール（指定地点を巡回）
-              </div>
-              {activePatrol ? (
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12 }}>
-                    目標地点: <b>{activePatrol.spotLabel}</b> （現在 {patrolDist?.text}）
-                  </div>
+                  />
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {onSetWaypoint && (
                       <button
@@ -663,35 +595,30 @@ export default function WorldBoxJobPanel({
                         style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                         onClick={() =>
                           guideTo({
-                            space: activePatrol.space,
-                            x: activePatrol.x,
-                            y: activePatrol.y,
-                            label: activePatrol.spotLabel,
+                            space: activeDelivery.targetSpace,
+                            x: activeDelivery.targetX,
+                            y: activeDelivery.targetY,
+                            label: activeDelivery.targetLabel,
                           })
                         }
                       >
-                        <WbIcon name="compass" size={12} color="#cffafe" /> 巡回先案内
+                        <WbIcon name="compass" size={12} color="#cffafe" /> 目的地コンパスを表示
                       </button>
                     )}
                     <button
                       type="button"
                       disabled={busy}
-                      className="wb-mmo-btn wb-mmo-btn-primary"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                      onClick={() =>
-                        void callAction({ action: "complete_patrol" }).then((r) => {
-                          if (r) setMsg(`[巡回点検完了] +¥${Number(r.net).toLocaleString()}`);
-                        })
-                      }
+                      className="wb-mmo-btn"
+                      onClick={() => void callAction({ action: "cancel_active_mission" })}
                     >
-                      <WbIcon name="check" size={12} color="#dcfce7" /> 異常なし・巡回報告
+                      破棄
                     </button>
                   </div>
                 </div>
               ) : (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || data.jailed}
                   className="wb-mmo-btn wb-mmo-btn-cyan"
                   style={{
                     display: "inline-flex",
@@ -700,17 +627,97 @@ export default function WorldBoxJobPanel({
                     gap: 5,
                   }}
                   onClick={() =>
-                    void callAction({ action: "start_patrol" }).then((r) => {
-                      const p = r?.patrol as SpatialSpot | undefined;
-                      if (p && onSetWaypoint) guideTo(p);
+                    void callAction({ action: "start_delivery" }).then((r) => {
+                      const d = r?.delivery as ActiveDeliveryOrder | undefined;
+                      if (d && onSetWaypoint) {
+                        guideTo({
+                          space: d.targetSpace,
+                          x: d.targetX,
+                          y: d.targetY,
+                          label: d.targetLabel,
+                        });
+                      }
                     })
                   }
                 >
-                  <WbIcon name="police" size={13} color="#cffafe" /> パトロール地点を受令する
+                  <WbIcon name="package" size={13} color="#cffafe" /> 配送ルートを受注して出発する
                 </button>
               )}
             </div>
           )}
+
+          {/* 3. Police Beat Patrol */}
+          {(focusMode === "all" || focusMode === "patrol") &&
+            (jobProfile.currentCareer === "police" ||
+              jobProfile.certifications.includes("security_officer")) && (
+              <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                  <WbIcon name="police" size={14} color="#38bdf8" />{" "}
+                  治安維持パトロール（指定地点を巡回）
+                </div>
+                {activePatrol ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 12 }}>
+                      目標地点: <b>{activePatrol.spotLabel}</b> （現在 {patrolDist?.text}）
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {onSetWaypoint && (
+                        <button
+                          type="button"
+                          className="wb-mmo-btn wb-mmo-btn-cyan"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                          onClick={() =>
+                            guideTo({
+                              space: activePatrol.space,
+                              x: activePatrol.x,
+                              y: activePatrol.y,
+                              label: activePatrol.spotLabel,
+                            })
+                          }
+                        >
+                          <WbIcon name="compass" size={12} color="#cffafe" /> 巡回先案内
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="wb-mmo-btn wb-mmo-btn-primary"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                        onClick={() =>
+                          void callAction({ action: "complete_patrol", qualityScore: 90 }).then(
+                            (r) => {
+                              if (r) setMsg(`[巡回点検完了] +¥${Number(r.net).toLocaleString()}`);
+                            },
+                          )
+                        }
+                      >
+                        <WbIcon name="check" size={12} color="#dcfce7" /> 現地スキャン・巡回報告
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="wb-mmo-btn wb-mmo-btn-cyan"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 5,
+                    }}
+                    onClick={() =>
+                      void callAction({ action: "start_patrol" }).then((r) => {
+                        const p = r?.patrol as SpatialSpot | undefined;
+                        if (p && onSetWaypoint) guideTo(p);
+                      })
+                    }
+                  >
+                    <WbIcon name="police" size={13} color="#cffafe" /> パトロール地点を受令する
+                  </button>
+                )}
+              </div>
+            )}
         </div>
       )}
 
@@ -755,30 +762,23 @@ export default function WorldBoxJobPanel({
               </div>
             </div>
 
+            <CareerInteractiveConsole
+              career={activeCareer}
+              disabled={busy || Boolean(data?.jailed)}
+              onComplete={(skillScore) => void handleSubmitShift(undefined, skillScore)}
+            />
+
             {task ? (
               <div
                 style={{
-                  marginTop: 12,
+                  marginTop: 10,
                   padding: 10,
                   borderRadius: 8,
                   background: "rgba(15, 23, 42, 0.75)",
                   border: "1px solid rgba(56, 189, 248, 0.35)",
                 }}
               >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: "#38bdf8",
-                    marginBottom: 6,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}
-                >
-                  <WbIcon name="contract" size={14} color="#38bdf8" />{" "}
-                  集中タスクチャレンジ（正答で報酬 1.4 倍！）
-                </div>
-                <div style={{ marginBottom: 8 }}>{task.prompt}</div>
+                <div style={{ marginBottom: 8, fontSize: 12 }}>{task.prompt}</div>
                 <div style={{ display: "grid", gap: 6 }}>
                   {task.choices.map((choice, idx) => (
                     <button
@@ -795,22 +795,15 @@ export default function WorldBoxJobPanel({
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
                 <button
                   type="button"
                   disabled={busy || data?.jailed}
-                  className="wb-mmo-btn wb-mmo-btn-cyan"
+                  className="wb-mmo-btn"
+                  style={{ fontSize: 11.5, opacity: 0.8 }}
                   onClick={() => void handleStartTask()}
                 >
-                  集中タスクを受注する（1.4倍報酬）
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || data?.jailed}
-                  className="wb-mmo-btn wb-mmo-btn-primary"
-                  onClick={() => void handleSubmitShift()}
-                >
-                  通常シフトを実行する
+                  専門筆記試験モードで受ける (1.4倍)
                 </button>
               </div>
             )}

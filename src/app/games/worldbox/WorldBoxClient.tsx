@@ -284,11 +284,11 @@ import WorldBoxMachinePanel from "./WorldBoxMachinePanel";
 import WorldBoxEconomyPanel from "./WorldBoxEconomyPanel";
 import WorldBoxCompanyPanel from "./WorldBoxCompanyPanel";
 import WorldBoxMarketPanel from "./WorldBoxMarketPanel";
-import WorldBoxFinancePanel from "./WorldBoxFinancePanel";
+import WorldBoxFinancePanel, { type FinanceTab } from "./WorldBoxFinancePanel";
 import WorldBoxGuildBoardPanel from "./WorldBoxGuildBoardPanel";
 import WorldBoxGuildShopPanel from "./WorldBoxGuildShopPanel";
-import WorldBoxJobPanel from "./WorldBoxJobPanel";
-import WorldBoxPrisonPanel from "./WorldBoxPrisonPanel";
+import WorldBoxJobPanel, { type JobFocusMode } from "./WorldBoxJobPanel";
+import WorldBoxPrisonPanel, { type PrisonFocusMode } from "./WorldBoxPrisonPanel";
 import WorldBoxEngineeringPanel from "./WorldBoxEngineeringPanel";
 import WorldBoxMetroPanel from "./WorldBoxMetroPanel";
 import WorldBoxTradePanel from "./WorldBoxTradePanel";
@@ -1426,6 +1426,29 @@ export default function WorldBoxClient() {
   const [stockOpen, setStockOpen] = useState(false);
   const [marketOpen, setMarketOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
+  const [financeConfig, setFinanceConfig] = useState<{
+    initialTab?: FinanceTab;
+    lockedTabs?: readonly FinanceTab[];
+    title?: string;
+  }>({});
+  const [jobFocus, setJobFocus] = useState<JobFocusMode>("all");
+  const [prisonFocus, setPrisonFocus] = useState<PrisonFocusMode>("full");
+  const openFinanceCounter = (
+    initialTab: FinanceTab,
+    lockedTabs: readonly FinanceTab[],
+    title: string,
+  ) => {
+    setFinanceConfig({ initialTab, lockedTabs, title });
+    setFinanceOpen(true);
+  };
+  const openJobCounter = (mode: JobFocusMode) => {
+    setJobFocus(mode);
+    setJobOpen(true);
+  };
+  const openPrisonCounter = (mode: PrisonFocusMode) => {
+    setPrisonFocus(mode);
+    setPrisonOpen(true);
+  };
   const [plazaMsg, setPlazaMsg] = useState("");
   const staminaBoostRef = useRef(false);
   const [boardOpen, setBoardOpen] = useState(false);
@@ -7266,59 +7289,8 @@ export default function WorldBoxClient() {
       },
     },
     {
-      id: "market",
-      label: marketOpen ? "商品取引所を閉じる" : "商品取引所",
-      show: true,
-      run: () => setMarketOpen((v) => !v),
-    },
-    {
-      id: "finance",
-      label: financeOpen ? "FX・予測・LPを閉じる" : "FX・予測・LP",
-      show: true,
-      run: () => setFinanceOpen((v) => !v),
-    },
-    {
-      id: "jobs",
-      label: jobOpen ? "仕事を閉じる" : "仕事・キャリア",
-      show: true,
-      run: () => setJobOpen((v) => !v),
-    },
-    {
-      id: "trade",
-      label: tradeOpen ? "P2P取引・契約を閉じる" : "P2P取引・契約",
-      show: true,
-      run: () => {
-        setTradeTarget(null);
-        setTradeOpen((v) => !v);
-      },
-    },
-    {
-      id: "realestate",
-      label: realEstateOpen ? "不動産・マンションを閉じる" : "不動産・マンション",
-      show: true,
-      run: () => setRealEstateOpen((v) => !v),
-    },
-    {
-      id: "governance",
-      label: governanceOpen ? "市政庁・裁判所を閉じる" : "市政庁・裁判所",
-      show: true,
-      run: () => setGovernanceOpen((v) => !v),
-    },
-    {
-      id: "engineering",
-      label: engineeringOpen ? "機械制作ラボを閉じる" : "機械制作・図鑑",
-      show: true,
-      run: () => setEngineeringOpen((v) => !v),
-    },
-    {
-      id: "prison",
-      label: prisonOpen ? "警察・刑務所を閉じる" : "警察・刑務所",
-      show: true,
-      run: () => setPrisonOpen((v) => !v),
-    },
-    {
       id: "metro",
-      label: metroOpen ? "METRO OSを閉じる" : "METRO OS (SNS・車両)",
+      label: metroOpen ? "METRO OSを閉じる" : "METRO OS (端末・施設案内)",
       show: true,
       run: () => setMetroOpen((v) => !v),
     },
@@ -7538,7 +7510,7 @@ export default function WorldBoxClient() {
               type="button"
               className="wb-mmo-btn wb-mmo-btn-amber"
               style={{ padding: "2px 8px", fontSize: 11 }}
-              onClick={() => setPrisonOpen(true)}
+              onClick={() => openPrisonCounter("full")}
             >
               刑務作業 / 保釈 / 脱獄
             </button>
@@ -7837,9 +7809,13 @@ export default function WorldBoxClient() {
                 <button
                   type="button"
                   style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
-                  onClick={() => setFinanceOpen((v) => !v)}
+                  onClick={() =>
+                    financeOpen
+                      ? setFinanceOpen(false)
+                      : openFinanceCounter("house_pool", ["house_pool"], "カジノ胴元 流動性LP窓口")
+                  }
                 >
-                  {financeOpen ? "LP閉じる" : "胴元LP・予測"}
+                  {financeOpen ? "LP閉じる" : "胴元LP"}
                 </button>
               </>
             )}
@@ -7886,9 +7862,9 @@ export default function WorldBoxClient() {
                   alignItems: "center",
                   gap: 5,
                 }}
-                onClick={() => setJobOpen(true)}
+                onClick={() => openJobCounter("cafe")}
               >
-                <WbIcon name="cafe" size={13} color="#fef3c7" /> カフェ運営
+                <WbIcon name="cafe" size={13} color="#fef3c7" /> カフェ実地営業
               </button>
             )}
             {stationUi === "bank" && (
@@ -7896,9 +7872,17 @@ export default function WorldBoxClient() {
                 <button
                   type="button"
                   style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
-                  onClick={() => setFinanceOpen((v) => !v)}
+                  onClick={() =>
+                    financeOpen
+                      ? setFinanceOpen(false)
+                      : openFinanceCounter(
+                          "fx_spot",
+                          ["fx_spot", "fx_margin"],
+                          "メトロ銀行 外貨・FXデスク",
+                        )
+                  }
                 >
-                  {financeOpen ? "閉じる" : "FX・予測・LP"}
+                  {financeOpen ? "閉じる" : "外貨・FX"}
                 </button>
                 <button
                   type="button"
@@ -7912,9 +7896,9 @@ export default function WorldBoxClient() {
                     alignItems: "center",
                     gap: 5,
                   }}
-                  onClick={() => setPrisonOpen(true)}
+                  onClick={() => openPrisonCounter("crime")}
                 >
-                  <WbIcon name="keyhole" size={13} color="#fecaca" /> 金庫/工作
+                  <WbIcon name="keyhole" size={13} color="#fecaca" /> 金庫潜入工作
                 </button>
               </>
             )}
@@ -7957,7 +7941,11 @@ export default function WorldBoxClient() {
                 <button
                   type="button"
                   style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
-                  onClick={() => setFinanceOpen((v) => !v)}
+                  onClick={() =>
+                    financeOpen
+                      ? setFinanceOpen(false)
+                      : openFinanceCounter("house_pool", ["house_pool"], "競馬場 胴元LP運用窓口")
+                  }
                 >
                   {financeOpen ? "LP閉じる" : "胴元LP"}
                 </button>
@@ -7975,16 +7963,17 @@ export default function WorldBoxClient() {
                 <button
                   type="button"
                   style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
-                  onClick={() => setMarketOpen((v) => !v)}
+                  onClick={() =>
+                    financeOpen
+                      ? setFinanceOpen(false)
+                      : openFinanceCounter(
+                          "prediction",
+                          ["prediction"],
+                          "証券取引所・未来予測マーケット",
+                        )
+                  }
                 >
-                  {marketOpen ? "板閉じる" : "商品板"}
-                </button>
-                <button
-                  type="button"
-                  style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
-                  onClick={() => setFinanceOpen((v) => !v)}
-                >
-                  {financeOpen ? "FX閉じる" : "FX・予測"}
+                  {financeOpen ? "予測閉じる" : "未来予測"}
                 </button>
               </>
             )}
@@ -8053,7 +8042,17 @@ export default function WorldBoxClient() {
                   background: stationUi === "prison_escape" ? "#dc2626" : "#0891b2",
                   borderColor: stationUi === "prison_escape" ? "#f87171" : "#22d3ee",
                 }}
-                onClick={() => setPrisonOpen(true)}
+                onClick={() =>
+                  openPrisonCounter(
+                    stationUi === "prison_work"
+                      ? "work"
+                      : stationUi === "prison_escape"
+                        ? "escape"
+                        : stationUi === "prison_visit"
+                          ? "visit"
+                          : "bail",
+                  )
+                }
               >
                 {stationUi === "prison_work"
                   ? "懲役作業を実行"
@@ -8061,7 +8060,7 @@ export default function WorldBoxClient() {
                     ? "脱獄ルートを開く"
                     : stationUi === "prison_visit"
                       ? "面会・差し入れ"
-                      : "保釈・刑務所端末"}
+                      : "保釈・司法端末"}
               </button>
             )}
             {plazaMsg && <span role="status">{plazaMsg}</span>}
@@ -9576,16 +9575,20 @@ export default function WorldBoxClient() {
                       const doorRet = npcDialog.doorReturn;
                       setNpcDialog(null);
                       if (spaceUi === intrTarget) {
-                        if (
-                          kind === "cafe" ||
-                          kind === "convenience" ||
-                          kind === "smith_workshop"
-                        ) {
+                        if (kind === "cafe") {
+                          openJobCounter("cafe");
+                        } else if (kind === "convenience") {
                           setShowEconomy(true);
+                        } else if (kind === "smith_workshop") {
+                          setEngineeringOpen(true);
                         } else if (kind === "bank_kiosk") {
-                          setFinanceOpen(true);
+                          openFinanceCounter(
+                            "fx_spot",
+                            ["fx_spot", "fx_margin"],
+                            "市民銀行 外貨・FXデスク",
+                          );
                         } else if (kind === "city_hall") {
-                          setBoardOpen(true);
+                          setGovernanceOpen(true);
                         }
                       } else {
                         if (doorRet) {
@@ -9601,7 +9604,7 @@ export default function WorldBoxClient() {
                   >
                     <WbIcon name="door" size={13} color="#e0f2fe" />{" "}
                     {spaceUi === npcDialog.interiorSpace
-                      ? `${npcDialog.buildingLabel ?? "店舗"}の窓口を開く`
+                      ? `${npcDialog.buildingLabel ?? "店舗"}の専用窓口を開く`
                       : `${npcDialog.buildingLabel ?? "建物"}に入る`}
                   </button>
                 )}
@@ -9611,23 +9614,40 @@ export default function WorldBoxClient() {
                   className="wb-mmo-btn wb-mmo-btn-amber"
                   onClick={() => {
                     setNpcDialog(null);
-                    setPrisonOpen(true);
+                    openPrisonCounter("police");
                   }}
                 >
                   <WbIcon name="shield" size={13} color="#fef3c7" /> 警察・懸賞手配を見る
                 </button>
               )}
-              {(npcDialog.role === "barista" || npcDialog.role === "merchant") && (
+              {npcDialog.role === "barista" && (
+                <button
+                  type="button"
+                  className="wb-mmo-btn"
+                  style={{
+                    background: "rgba(217,119,6,0.28)",
+                    borderColor: "#fbbf24",
+                    color: "#fef3c7",
+                  }}
+                  onClick={() => {
+                    setNpcDialog(null);
+                    openJobCounter("cafe");
+                  }}
+                >
+                  <WbIcon name="cafe" size={13} color="#fde68a" /> バリスタ実地勤務
+                </button>
+              )}
+              {npcDialog.role === "merchant" && (
                 <button
                   type="button"
                   className="wb-mmo-btn"
                   style={{ background: "rgba(255,255,255,0.1)", color: "#f8fafc" }}
                   onClick={() => {
                     setNpcDialog(null);
-                    setJobOpen(true);
+                    openJobCounter("delivery");
                   }}
                 >
-                  <WbIcon name="briefcase" size={13} color="#fde047" /> 街のお仕事 / 配達
+                  <WbIcon name="truck" size={13} color="#fde047" /> 配達・物流オファー
                 </button>
               )}
               {npcDialog.cx !== undefined && npcDialog.cy !== undefined && spaceUi === "world" && (
@@ -9652,7 +9672,14 @@ export default function WorldBoxClient() {
           </div>
         )}
         {marketOpen && <WorldBoxMarketPanel onClose={() => setMarketOpen(false)} />}
-        {financeOpen && <WorldBoxFinancePanel onClose={() => setFinanceOpen(false)} />}
+        {financeOpen && (
+          <WorldBoxFinancePanel
+            initialTab={financeConfig.initialTab}
+            lockedTabs={financeConfig.lockedTabs}
+            title={financeConfig.title}
+            onClose={() => setFinanceOpen(false)}
+          />
+        )}
         {pianoOpen && spaceUi === "lobby" && (
           <WorldBoxPianoPanel onClose={() => setPianoOpen(false)} onPlay={playPianoNote} />
         )}
@@ -9716,6 +9743,7 @@ export default function WorldBoxClient() {
         )}
         {jobOpen && (
           <WorldBoxJobPanel
+            focusMode={jobFocus}
             onProfileChange={(p) => setInvProfile(p)}
             onStatusChange={() => void refreshMmoRef.current?.()}
             onSetWaypoint={(wp) => setWaypoint(wp)}
@@ -9724,6 +9752,7 @@ export default function WorldBoxClient() {
         )}
         {prisonOpen && (
           <WorldBoxPrisonPanel
+            focusMode={prisonFocus}
             currentSpace={spaceUi}
             profile={invProfile}
             onForceMove={(mv) => {
@@ -9746,19 +9775,16 @@ export default function WorldBoxClient() {
             onProfileChange={(p) => setInvProfile(p)}
             onStatusChange={() => void refreshMmoRef.current?.()}
             onVehicleChange={(v) => setEquippedVehicle(v)}
+            onSetWaypoint={(wp) => setWaypoint(wp)}
             onOpenPanel={(p) => {
-              if (p === "jobs") setJobOpen(true);
+              if (p === "jobs_career") openJobCounter("career");
+              else if (p === "jobs_delivery") openJobCounter("delivery");
               else if (p === "trade") {
                 setTradeTarget(null);
                 setTradeOpen(true);
               } else if (p === "realestate") setRealEstateOpen(true);
               else if (p === "governance") setGovernanceOpen(true);
-              else if (p === "engineering") setEngineeringOpen(true);
-              else if (p === "prison") setPrisonOpen(true);
-              else if (p === "market") setMarketOpen(true);
-              else if (p === "finance") setFinanceOpen(true);
               else if (p === "company") setShowCompany(true);
-              else if (p === "economy") setShowEconomy(true);
             }}
             onClose={() => setMetroOpen(false)}
           />

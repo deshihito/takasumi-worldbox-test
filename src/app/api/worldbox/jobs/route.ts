@@ -228,9 +228,16 @@ export async function POST(request: Request) {
         submitted.length === target.length &&
         [...submitted].sort().join("|") === [...target].sort().join("|");
 
+      const rawQuality =
+        typeof fields.qualityScore === "number" && Number.isFinite(fields.qualityScore)
+          ? Math.max(0, Math.min(100, Math.round(fields.qualityScore)))
+          : 60;
+      const qualityBonusPct = exactMatch ? (rawQuality >= 88 ? 30 : rawQuality >= 68 ? 15 : 0) : 0;
       const base = jobProfile.activeCafe.ticket.basePay;
       const gross = exactMatch
-        ? Math.round(base * (1.35 + Math.min(0.4, jobProfile.level * 0.03)))
+        ? Math.round(
+            base * (1.35 + Math.min(0.4, jobProfile.level * 0.03)) * (1 + qualityBonusPct / 100),
+          )
         : Math.round(base * 0.55);
       const tax = Math.floor(gross * gov.policies.incomeTaxRate);
       const net = Math.max(20, gross - tax);
@@ -243,7 +250,7 @@ export async function POST(request: Request) {
 
       const nextServed = (jobProfile.activeCafe.servedCount ?? 0) + 1;
       const nextTicket = generateCafeTicket(now + nextServed * 17);
-      let nextXp = jobProfile.xp + (exactMatch ? 24 : 10);
+      let nextXp = jobProfile.xp + (exactMatch ? (rawQuality >= 88 ? 30 : 24) : 10);
       let nextLevel = jobProfile.level;
       while (nextXp >= xpForNextLevel(nextLevel) && nextLevel < 50) {
         nextXp -= xpForNextLevel(nextLevel);
@@ -273,6 +280,7 @@ export async function POST(request: Request) {
         {
           ok: true,
           exactMatch,
+          qualityBonusPct,
           gross,
           tax,
           net,
@@ -320,7 +328,12 @@ export async function POST(request: Request) {
       const vSpec = vehicleSpecFor(equippedVehicle);
       const vMult = vSpec ? 1 + vSpec.deliveryBonusPct / 100 : 1;
       const lvlMult = 1 + Math.min(0.8, (jobProfile.level - 1) * 0.05);
-      const gross = Math.round(order.rewardCoins * vMult * lvlMult);
+      const delQuality =
+        typeof fields.qualityScore === "number" && Number.isFinite(fields.qualityScore)
+          ? Math.max(0, Math.min(100, Math.round(fields.qualityScore)))
+          : 70;
+      const delBonusMult = delQuality >= 85 ? 1.2 : delQuality >= 60 ? 1.08 : 1;
+      const gross = Math.round(order.rewardCoins * vMult * lvlMult * delBonusMult);
       const tax = Math.floor(gross * gov.policies.incomeTaxRate);
       const net = Math.max(50, gross - tax);
 
@@ -400,7 +413,14 @@ export async function POST(request: Request) {
       }
       const vSpec = vehicleSpecFor(equippedVehicle);
       const bountyMult = vSpec?.hasSiren ? 1.2 : 1;
-      const gross = Math.round(beat.rewardCoins * gov.policies.policeBountyMult * bountyMult);
+      const scanScore =
+        typeof fields.qualityScore === "number" && Number.isFinite(fields.qualityScore)
+          ? Math.max(0, Math.min(100, Math.round(fields.qualityScore)))
+          : 70;
+      const scanMult = scanScore >= 85 ? 1.22 : scanScore >= 60 ? 1.1 : 1;
+      const gross = Math.round(
+        beat.rewardCoins * gov.policies.policeBountyMult * bountyMult * scanMult,
+      );
       const tax = Math.floor(gross * gov.policies.incomeTaxRate);
       const net = Math.max(50, gross - tax);
       const paid = await awardMmoCoins(session, ownerKey, net, "job_salary");
@@ -464,7 +484,12 @@ export async function POST(request: Request) {
         taskCorrect = Math.floor(fields.choiceIndex) === jobProfile.activeTask.correctIndex;
       }
 
-      const rawPayout = computeShiftPayout(jobProfile, career, taskCorrect);
+      const skillScore =
+        typeof fields.skillScore === "number" && Number.isFinite(fields.skillScore)
+          ? Math.max(0, Math.min(100, Math.round(fields.skillScore)))
+          : null;
+
+      const rawPayout = computeShiftPayout(jobProfile, career, taskCorrect, skillScore);
       const dynTax = Math.floor(rawPayout.gross * gov.policies.incomeTaxRate);
       const dynNet = Math.max(25, rawPayout.gross - dynTax);
       const payout = { ...rawPayout, tax: dynTax, net: dynNet };

@@ -54,28 +54,26 @@ interface CompanySummary {
 }
 
 export type MetroAppKey =
-  | "jobs"
-  | "engineering"
-  | "prison"
+  | "jobs_career"
+  | "jobs_delivery"
   | "trade"
   | "realestate"
   | "governance"
-  | "market"
-  | "finance"
-  | "company"
-  | "economy";
+  | "company";
 
 export default function WorldBoxMetroPanel({
   onProfileChange,
   onStatusChange,
   onVehicleChange,
   onOpenPanel,
+  onSetWaypoint,
   onClose,
 }: {
   onProfileChange?: (profile: PlayerProfile) => void;
   onStatusChange?: () => void;
   onVehicleChange?: (v: VehicleItemId | null) => void;
   onOpenPanel: (panel: MetroAppKey) => void;
+  onSetWaypoint?: (wp: { space: string; x: number; y: number; label: string }) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"guide" | "sns" | "missions" | "garage" | "news">("guide");
@@ -289,105 +287,191 @@ export default function WorldBoxMetroPanel({
       )}
 
       {tab === "guide" && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
-            gap: 8,
-          }}
-        >
-          {(
-            [
-              {
-                key: "jobs",
-                icon: "briefcase",
-                color: "#38bdf8",
-                title: "仕事・キャリア",
-                desc: "カフェ運営・実地配達・パトロール",
-              },
-              {
-                key: "trade",
-                icon: "handshake",
-                color: "#22d3ee",
-                title: "取引・契約",
-                desc: "P2P直取引・送金・市民契約ボード",
-              },
-              {
-                key: "realestate",
-                icon: "town",
-                color: "#4ade80",
-                title: "不動産・住居",
-                desc: "16×16土地権利書・分譲マンション",
-              },
-              {
-                key: "governance",
-                icon: "gov",
-                color: "#fbbf24",
-                title: "市政庁・法廷",
-                desc: "市長選挙・政策減税・公開陪審裁判",
-              },
-              {
-                key: "engineering",
-                icon: "gear",
-                color: "#94a3b8",
-                title: "機械制作ラボ",
-                desc: "10種マシン・乗り物・カスタム設計",
-              },
-              {
-                key: "prison",
-                icon: "scale",
-                color: "#f87171",
-                title: "治安局・刑務所",
-                desc: "現地強盗・逮捕・懲役作業・ダクト脱獄",
-              },
-              {
-                key: "company",
-                icon: "building",
-                color: "#818cf8",
-                title: "起業・会社経営",
-                desc: "法人設立・IPO株・社員募集",
-              },
-              {
-                key: "market",
-                icon: "package",
-                color: "#fb923c",
-                title: "コモディティ市場",
-                desc: "板取引オーダーブック・素材価格",
-              },
-              {
-                key: "finance",
-                icon: "chart",
-                color: "#34d399",
-                title: "銀行・FX・予言",
-                desc: "不動産担保融資・FX為替・未来市場",
-              },
-            ] as const
-          ).map((card) => (
-            <button
-              key={card.key}
-              type="button"
-              className="wb-mmo-card"
-              style={{ textAlign: "left", cursor: "pointer" }}
-              onClick={() => {
-                onClose();
-                onOpenPanel(card.key);
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: "#94a3b8", marginBottom: 6, fontWeight: 700 }}>
+              モバイル専用市民アプリ（遠隔手続き）
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
+                gap: 8,
               }}
             >
+              {(
+                [
+                  {
+                    key: "jobs_career",
+                    icon: "briefcase",
+                    color: "#38bdf8",
+                    title: "キャリア転職・実技シフト",
+                    desc: "12職業の実技ワーク・資格取得",
+                  },
+                  {
+                    key: "jobs_delivery",
+                    icon: "truck",
+                    color: "#22d3ee",
+                    title: "メトロ配送ディスパッチ",
+                    desc: "配達ルート受注・ナビ転送",
+                  },
+                  {
+                    key: "trade",
+                    icon: "handshake",
+                    color: "#34d399",
+                    title: "P2P直取引・市民契約",
+                    desc: "個人間エスクロー取引・業務契約",
+                  },
+                  {
+                    key: "realestate",
+                    icon: "town",
+                    color: "#4ade80",
+                    title: "不動産・分譲マンション",
+                    desc: "16×16土地権利書・自宅ルーム",
+                  },
+                  {
+                    key: "governance",
+                    icon: "gov",
+                    color: "#fbbf24",
+                    title: "市政庁・公開法廷",
+                    desc: "市長選挙・税率政策・陪審裁判",
+                  },
+                  {
+                    key: "company",
+                    icon: "building",
+                    color: "#818cf8",
+                    title: "法人経営・社員採用",
+                    desc: "会社設立・IPO上場・給与設定",
+                  },
+                ] as const
+              ).map((card) => (
+                <button
+                  key={card.key}
+                  type="button"
+                  className="wb-mmo-card"
+                  style={{ textAlign: "left", cursor: "pointer" }}
+                  onClick={() => {
+                    onClose();
+                    onOpenPanel(card.key);
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      fontSize: 13,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <WbIcon name={card.icon} size={14} color={card.color} />
+                    {card.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>{card.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {onSetWaypoint && (
+            <div>
+              <div style={{ fontSize: 11.5, color: "#94a3b8", marginBottom: 6, fontWeight: 700 }}>
+                現地施設ナビ案内（各窓口は現地で直接操作）
+              </div>
               <div
                 style={{
-                  fontWeight: 800,
-                  fontSize: 13,
-                  display: "flex",
-                  alignItems: "center",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
                   gap: 6,
                 }}
               >
-                <WbIcon name={card.icon} size={14} color={card.color} />
-                {card.title}
+                {(
+                  [
+                    {
+                      label: "南東 車両ディーラー",
+                      space: "lobby",
+                      x: 109,
+                      y: 73,
+                      icon: "car",
+                      color: "#38bdf8",
+                    },
+                    {
+                      label: "西グルメ カフェ実店舗",
+                      space: "lobby",
+                      x: 5,
+                      y: 7,
+                      icon: "cafe",
+                      color: "#fb923c",
+                    },
+                    {
+                      label: "北東 メトロ銀行・FX",
+                      space: "lobby",
+                      x: 40,
+                      y: 10,
+                      icon: "bank",
+                      color: "#facc15",
+                    },
+                    {
+                      label: "金融街 株式・未来予測",
+                      space: "lobby",
+                      x: 43,
+                      y: 5,
+                      icon: "chart",
+                      color: "#34d399",
+                    },
+                    {
+                      label: "蒸気鍛冶・機械設計ラボ",
+                      space: "lobby",
+                      x: 28,
+                      y: 38,
+                      icon: "anvil",
+                      color: "#94a3b8",
+                    },
+                    {
+                      label: "ギルド商店・板取引市場",
+                      space: "lobby",
+                      x: 14,
+                      y: 34,
+                      icon: "bag",
+                      color: "#f472b6",
+                    },
+                  ] as const
+                ).map((spot) => (
+                  <button
+                    key={spot.label}
+                    type="button"
+                    className="wb-mmo-card"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 6,
+                      cursor: "pointer",
+                      padding: "7px 10px",
+                    }}
+                    onClick={() => {
+                      onSetWaypoint({ space: spot.space, x: spot.x, y: spot.y, label: spot.label });
+                      onClose();
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <WbIcon name={spot.icon} size={13} color={spot.color} />
+                      {spot.label}
+                    </span>
+                    <WbIcon name="compass" size={12} color="#38bdf8" />
+                  </button>
+                ))}
               </div>
-              <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>{card.desc}</div>
-            </button>
-          ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -553,16 +637,23 @@ export default function WorldBoxMetroPanel({
               <span>
                 所持車両なし — ロビー南東・各都市のディーラーで購入、または制作ラボで製作可能
               </span>
-              <button
-                type="button"
-                className="wb-mmo-btn wb-mmo-btn-cyan"
-                onClick={() => {
-                  onClose();
-                  onOpenPanel("engineering");
-                }}
-              >
-                制作ラボを開く
-              </button>
+              {onSetWaypoint && (
+                <button
+                  type="button"
+                  className="wb-mmo-btn wb-mmo-btn-cyan"
+                  onClick={() => {
+                    onSetWaypoint({
+                      space: "lobby",
+                      x: 109,
+                      y: 73,
+                      label: "南東モビリティ・車両ディーラー",
+                    });
+                    onClose();
+                  }}
+                >
+                  ディーラーへ案内する
+                </button>
+              )}
             </div>
           ) : (
             ownedVehicles.map((vid) => {

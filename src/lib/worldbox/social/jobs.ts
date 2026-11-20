@@ -301,7 +301,7 @@ export interface ActiveCafeSession {
 export interface ActivePatrolBeat {
   id: string;
   spotLabel: string;
-  space: "lobby" | "world";
+  space: string;
   x: number;
   y: number;
   rewardCoins: number;
@@ -566,11 +566,26 @@ export function canSwitchCareer(
   return { ok: true };
 }
 
+export function computeSkillMultiplier(skillScore?: number | null): {
+  mult: number;
+  grade: "S" | "A" | "B" | "C";
+} {
+  if (typeof skillScore !== "number" || !Number.isFinite(skillScore)) {
+    return { mult: 1.0, grade: "B" };
+  }
+  const s = Math.max(0, Math.min(100, Math.round(skillScore)));
+  if (s >= 90) return { mult: 1.55, grade: "S" };
+  if (s >= 72) return { mult: 1.35, grade: "A" };
+  if (s >= 45) return { mult: 1.12, grade: "B" };
+  return { mult: 0.85, grade: "C" };
+}
+
 export function computeShiftPayout(
   profile: JobProfile,
   career: CareerDef,
   taskCorrect: boolean | null,
-): { gross: number; tax: number; net: number; bonusPct: number } {
+  skillScore?: number | null,
+): { gross: number; tax: number; net: number; bonusPct: number; grade?: "S" | "A" | "B" | "C" } {
   let mult = 1 + Math.min(1.0, (profile.level - 1) * 0.08);
   mult += Math.max(-0.15, ((profile.creditScore - 600) / 300) * 0.2);
 
@@ -586,19 +601,27 @@ export function computeShiftPayout(
   if (career.id === "engineer" && profile.certifications.includes("master_engineer")) {
     mult += 0.35;
   }
-  if (taskCorrect === true) mult *= 1.4;
-  else if (taskCorrect === false) mult *= 0.75;
+  let grade: "S" | "A" | "B" | "C" | undefined;
+  if (typeof skillScore === "number" && Number.isFinite(skillScore)) {
+    const sk = computeSkillMultiplier(skillScore);
+    mult *= sk.mult;
+    grade = sk.grade;
+  } else if (taskCorrect === true) {
+    mult *= 1.4;
+  } else if (taskCorrect === false) {
+    mult *= 0.75;
+  }
 
   const gross = Math.max(50, Math.round(career.basePay * mult));
   const tax = Math.floor(gross * WORK_TAX_RATE);
   const net = gross - tax;
   const bonusPct = Math.round((mult - 1) * 100);
-  return { gross, tax, net, bonusPct };
+  return { gross, tax, net, bonusPct, ...(grade ? { grade } : {}) };
 }
 
 export interface SpatialSpot {
   label: string;
-  space: "lobby" | "world";
+  space: string;
   x: number;
   y: number;
 }
@@ -710,6 +733,12 @@ export function nearCafeSpot(
   y: number,
   maxDist = 4.2,
 ): SpatialSpot | null {
+  if (space.startsWith("interior:") && space.includes(":cafe_")) {
+    if (Math.hypot(x - 4.5, y - 4) <= Math.max(maxDist, 5.2)) {
+      return { label: "街角カフェ 店内カウンター", space, x: 4.5, y: 4 };
+    }
+    return null;
+  }
   if (space !== "lobby") return null;
   for (const spot of CAFE_SPOTS) {
     if (Math.hypot(x - spot.x, y - spot.y) <= maxDist) return spot;
