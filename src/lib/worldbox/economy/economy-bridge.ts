@@ -68,6 +68,14 @@ export const EARN_REASONS: ReadonlySet<string> = new Set([
   "machine_yield",
   "vending_sale",
   "quest_reward",
+  "p2p_trade",
+  "p2p_transfer",
+  "contract_reward",
+  "contract_refund",
+  "rent_income",
+  "treasury_stimulus",
+  "court_refund",
+  "arcade_prize",
 ]);
 
 export const GAMBLE_REASONS: ReadonlySet<string> = new Set([

@@ -20,6 +20,9 @@ import { loadFxState } from "@/lib/worldbox/economy/fx-online";
 import { chargeUserChunked, payoutUserChunked } from "@/lib/worldbox/economy/settlement";
 import { loadAllCompanies } from "@/lib/worldbox/social/company-online";
 import { loadNationsState } from "@/lib/worldbox/social/nations-online";
+import { computeRealEstateCollateral } from "@/lib/worldbox/world/realestate";
+import { listAllApartments, listAllPropertyDeeds } from "@/lib/worldbox/world/realestate-online";
+import { loadTileOverrides } from "@/lib/worldbox/world/tiles-online";
 
 export const runtime = "nodejs";
 
@@ -30,13 +33,17 @@ function err(error: string, status = 400) {
 }
 
 async function computeUserCollaterals(ownerKey: string, now: number) {
-  const [exchange, commodities, companies, fx, nations] = await Promise.all([
-    loadExchangeState(),
-    loadCommoditiesMarket(),
-    loadAllCompanies(),
-    loadFxState(),
-    loadNationsState(),
-  ]);
+  const [exchange, commodities, companies, fx, nations, deeds, apartments, overrides] =
+    await Promise.all([
+      loadExchangeState(),
+      loadCommoditiesMarket(),
+      loadAllCompanies(),
+      loadFxState(),
+      loadNationsState(),
+      listAllPropertyDeeds(),
+      listAllApartments(),
+      loadTileOverrides(),
+    ]);
   const companiesById = new Map(companies.map((c) => [c.id, c]));
   const stockValue = computePortfolioValue(exchange, ownerKey, commodities, companiesById, now);
   const fxValue = fxSpotPortfolioValue(
@@ -46,7 +53,8 @@ async function computeUserCollaterals(ownerKey: string, now: number) {
     Object.keys(nations.nations).length,
     now,
   );
-  return { stockValue, fxValue };
+  const realEstateValue = computeRealEstateCollateral(ownerKey, deeds, apartments, overrides);
+  return { stockValue, fxValue, realEstateValue };
 }
 
 export async function GET(request: Request) {
@@ -79,7 +87,12 @@ export async function GET(request: Request) {
       computeUserCollaterals(ownerKey, now),
       readUserBalance(session.id),
     ]);
-    const credit = computeCreditLimit(acc, collaterals.stockValue, collaterals.fxValue);
+    const credit = computeCreditLimit(
+      acc,
+      collaterals.stockValue,
+      collaterals.fxValue,
+      collaterals.realEstateValue,
+    );
     const rates = dynamicBankRates(bank);
     return NextResponse.json(
       {
@@ -139,7 +152,12 @@ export async function POST(request: Request) {
         {
           ok: true,
           account: acc,
-          credit: computeCreditLimit(acc, collaterals.stockValue, collaterals.fxValue),
+          credit: computeCreditLimit(
+            acc,
+            collaterals.stockValue,
+            collaterals.fxValue,
+            collaterals.realEstateValue,
+          ),
           balance: await readUserBalance(discordId),
         },
         { headers: NO_STORE },
@@ -154,6 +172,7 @@ export async function POST(request: Request) {
         collaterals.stockValue,
         collaterals.fxValue,
         now,
+        collaterals.realEstateValue,
       );
       if (!plan.ok) return err(plan.error, 409);
       if (!(await storeBankState(plan.state))) return err("store_failed", 503);
@@ -167,7 +186,12 @@ export async function POST(request: Request) {
         {
           ok: true,
           account: acc,
-          credit: computeCreditLimit(acc, collaterals.stockValue, collaterals.fxValue),
+          credit: computeCreditLimit(
+            acc,
+            collaterals.stockValue,
+            collaterals.fxValue,
+            collaterals.realEstateValue,
+          ),
           balance: await readUserBalance(discordId),
         },
         { headers: NO_STORE },
@@ -182,6 +206,7 @@ export async function POST(request: Request) {
         collaterals.stockValue,
         collaterals.fxValue,
         now,
+        collaterals.realEstateValue,
       );
       if (!plan.ok) return err(plan.error, 409);
       if (!(await storeBankState(plan.state))) return err("store_failed", 503);
@@ -195,7 +220,12 @@ export async function POST(request: Request) {
         {
           ok: true,
           account: acc,
-          credit: computeCreditLimit(acc, collaterals.stockValue, collaterals.fxValue),
+          credit: computeCreditLimit(
+            acc,
+            collaterals.stockValue,
+            collaterals.fxValue,
+            collaterals.realEstateValue,
+          ),
           balance: await readUserBalance(discordId),
         },
         { headers: NO_STORE },
@@ -221,7 +251,12 @@ export async function POST(request: Request) {
           ok: true,
           paid: plan.paid,
           account: acc,
-          credit: computeCreditLimit(acc, collaterals.stockValue, collaterals.fxValue),
+          credit: computeCreditLimit(
+            acc,
+            collaterals.stockValue,
+            collaterals.fxValue,
+            collaterals.realEstateValue,
+          ),
           balance: await readUserBalance(discordId),
         },
         { headers: NO_STORE },

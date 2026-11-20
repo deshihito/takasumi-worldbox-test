@@ -8642,16 +8642,34 @@ button.og-bs-cell:hover {
 }
 
 /* --- TAKASUMI METRO MMO UI LAYER --- */
+@keyframes wb-panel-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+.wb-shell .wb-panel {
+  animation: wb-panel-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-shell .wb-panel {
+    animation: none;
+  }
+}
 .wb-shell .wb-mmo-ticker {
   position: absolute;
-  top: calc(40px + env(safe-area-inset-top, 0px));
+  top: calc(10px + env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: min(520px, calc(100vw - 260px));
+  max-width: min(440px, calc(100vw - 320px));
   padding: 4px 12px;
   border-radius: 999px;
   background: rgba(13, 19, 28, 0.86);
@@ -8687,52 +8705,59 @@ button.og-bs-cell:hover {
   }
 }
 
-.wb-shell .wb-mmo-dock {
+.wb-shell .wb-mmo-waypoint {
   position: absolute;
-  left: calc(10px + env(safe-area-inset-left, 0px));
-  top: calc(52px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  top: calc(42px + env(safe-area-inset-top, 0px));
+  transform: translateX(-50%);
   z-index: 6;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-@media (max-width: 759px) and (orientation: portrait) {
-  .wb-shell .wb-mmo-dock {
-    flex-direction: row;
-    flex-wrap: wrap;
-    top: calc(46px + env(safe-area-inset-top, 0px));
-    max-width: calc(100vw - 20px);
-  }
-}
-.wb-shell .wb-mmo-dock-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: rgba(15, 22, 32, 0.88);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  gap: 8px;
+  max-width: min(460px, calc(100vw - 260px));
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(13, 19, 28, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.5);
   backdrop-filter: blur(8px);
   color: #f1f5f9;
   font-size: 12px;
   font-weight: 700;
-  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
-.wb-shell .wb-mmo-dock-btn:hover {
-  background: rgba(30, 41, 59, 0.94);
-  border-color: rgba(248, 250, 252, 0.32);
+@media (max-width: 900px) {
+  .wb-shell .wb-mmo-waypoint {
+    top: calc(48px + env(safe-area-inset-top, 0px));
+    max-width: calc(100vw - 24px);
+  }
 }
-.wb-shell .wb-mmo-dock-btn.is-active {
-  background: rgba(6, 182, 212, 0.2);
-  border-color: #22d3ee;
-  color: #ecfeff;
+.wb-shell .wb-mmo-waypoint-btn {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(2, 132, 199, 0.28);
+  color: #e0f2fe;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
-.wb-shell .wb-mmo-dock-btn.is-danger {
-  background: rgba(127, 29, 29, 0.86);
-  border-color: rgba(248, 113, 113, 0.65);
-  color: #fee2e2;
+.wb-shell .wb-mmo-step-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.wb-shell .wb-mmo-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #bae6fd;
 }
 .wb-shell .wb-mmo-pill {
   display: inline-flex;
@@ -8829,4 +8854,3 @@ button.og-bs-cell:hover {
   font-weight: 700;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
-

@@ -2087,6 +2087,42 @@ export const ITEMS: readonly ItemDef[] = [
     price: 45000,
     facility: true,
   },
+  {
+    id: "electric_scooter",
+    name: "電動キックボード",
+    desc: "速度7.8で街や郊外を軽快に駆け抜けられる次世代モビリティ",
+    category: "special",
+    price: 15000,
+  },
+  {
+    id: "delivery_moped",
+    name: "配達用スクーター",
+    desc: "速度8.6・配達ギグ報酬+20%の宅配専用マシンバイク",
+    category: "special",
+    price: 19000,
+  },
+  {
+    id: "cargo_truck",
+    name: "産業カーゴトラック",
+    desc: "速度9.4・配達ギグ報酬+35%の大型貨物トラック",
+    category: "special",
+    price: 42000,
+  },
+  {
+    id: "police_cruiser",
+    name: "メトロパトロールカー",
+    desc: "速度9.4・赤青サイレン搭載で治安逮捕報酬+20%の緊急車両",
+    category: "special",
+    price: 41000,
+  },
+  {
+    id: "conveyor_relay",
+    name: "遠隔物流リレーノード",
+    desc: "物流ソーターと遠隔施設・自販機を連携させる自動搬送マシン",
+    category: "furniture",
+    price: 12500,
+    facility: true,
+  },
 ];
 
 export const ITEM_ICON_IDS: readonly string[] = [
@@ -2418,6 +2454,11 @@ export const ITEM_ICON_IDS: readonly string[] = [
   "security_camera",
   "logistics_sorter",
   "custom_machine",
+  "electric_scooter",
+  "delivery_moped",
+  "cargo_truck",
+  "police_cruiser",
+  "conveyor_relay",
 ];
 
 const ITEM_ICON_ID_SET = new Set(ITEM_ICON_IDS);
@@ -2922,6 +2963,36 @@ export const RECIPES: readonly Recipe[] = [
     id: "custom_machine",
     inputs: { microchip: 2, servo_motor: 1, battery_cell: 1, steel_plate: 2 },
     output: "custom_machine",
+    outputCount: 1,
+  },
+  {
+    id: "electric_scooter",
+    inputs: { steel_plate: 1, battery_cell: 1, servo_motor: 1 },
+    output: "electric_scooter",
+    outputCount: 1,
+  },
+  {
+    id: "delivery_moped",
+    inputs: { steel_plate: 2, hydraulic_piston: 1, battery_cell: 1 },
+    output: "delivery_moped",
+    outputCount: 1,
+  },
+  {
+    id: "cargo_truck",
+    inputs: { steel_plate: 3, hydraulic_piston: 2, servo_motor: 1, microchip: 1 },
+    output: "cargo_truck",
+    outputCount: 1,
+  },
+  {
+    id: "police_cruiser",
+    inputs: { steel_plate: 2, sensor_unit: 1, microchip: 1, servo_motor: 2 },
+    output: "police_cruiser",
+    outputCount: 1,
+  },
+  {
+    id: "conveyor_relay",
+    inputs: { servo_motor: 1, copper_wire: 2, circuit_board: 1 },
+    output: "conveyor_relay",
     outputCount: 1,
   },
 ];

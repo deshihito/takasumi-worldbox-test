@@ -28,6 +28,7 @@ import {
   machineSpecFor,
   parseCustomBlueprint,
   parseProgram,
+  type LogisticsRouteMode,
   type MachineState,
 } from "@/lib/worldbox/economy/machines";
 import {
@@ -38,6 +39,7 @@ import {
 import { awardMmoCoins, spendMmoCoins } from "@/lib/worldbox/economy/mmo-wallet";
 import { payoutUserChunked } from "@/lib/worldbox/economy/settlement";
 import { incrementQuestProgress } from "@/lib/worldbox/social/mmo-events-online";
+import { depositCityTreasury, loadGovernanceState } from "@/lib/worldbox/social/governance-online";
 import { withUserLock } from "@/lib/worldbox/core/user-lock";
 
 export const runtime = "nodejs";
@@ -153,32 +155,120 @@ async function runEvaluation(
     }
   }
 
-  // Logistics sorter gathers buffers from adjacent machines within radius 2
+  // Logistics sorter gathers buffers via nearby radius 2 + connected conveyor_relay chains,
+  // and optionally routes items straight into CNC inputs or Vending Machine stock.
   if (
     machineType === "logistics_sorter" &&
     now - state.lastEvalAt >= state.program.intervalSec * 1000
   ) {
     const buffer = { ...state.buffer };
+    const routeMode: LogisticsRouteMode = state.routeMode ?? "buffer";
     let pulled = 0;
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        const ov = all[tileKey(x + dx, y + dy)];
-        if (!ov?.block || ov.block.ownerId !== state.ownerId || !isMachineItem(ov.block.itemId))
-          continue;
-        if (ov.block.itemId === "logistics_sorter" || ov.block.itemId === "smart_vending") continue;
-        const srcMachine = await loadMachine(x + dx, y + dy);
-        if (!srcMachine || machineBufferCount(srcMachine) <= 0) continue;
-        for (const [id, n] of Object.entries(srcMachine.buffer)) {
+
+    // BFS across radius-2 hops along conveyor_relay nodes (max 24 connected hubs)
+    const connectedCoords: { cx: number; cy: number; ov: TileOverride }[] = [];
+    const seen = new Set<string>([tileKey(x, y)]);
+    const queue: { cx: number; cy: number }[] = [{ cx: x, cy: y }];
+    while (queue.length > 0 && seen.size < 25) {
+      const cur = queue.shift()!;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = cur.cx + dx;
+          const ny = cur.cy + dy;
+          const k = tileKey(nx, ny);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const ov = all[k];
+          if (!ov || !isOverrideActive(ov, now) || !ov.block) continue;
+          if (ov.block.ownerId !== state.ownerId || !isMachineItem(ov.block.itemId)) continue;
+          connectedCoords.push({ cx: nx, cy: ny, ov });
+          if (ov.block.itemId === "conveyor_relay") {
+            queue.push({ cx: nx, cy: ny });
+          }
+        }
+      }
+    }
+
+    const cncTargets: { cx: number; cy: number; machine: MachineState }[] = [];
+    const vendingTargets: { cx: number; cy: number; machine: MachineState }[] = [];
+
+    for (const node of connectedCoords) {
+      const type = node.ov.block!.itemId;
+      if (type === "conveyor_relay" || type === "logistics_sorter" || type === "power_generator") {
+        continue;
+      }
+      const m = await loadMachine(node.cx, node.cy);
+      if (!m) continue;
+      if (type === "cnc_factory" || (type === "custom_machine" && m.blueprint?.module === "cnc")) {
+        cncTargets.push({ cx: node.cx, cy: node.cy, machine: m });
+      }
+      if (type === "smart_vending") {
+        vendingTargets.push({ cx: node.cx, cy: node.cy, machine: m });
+        continue;
+      }
+      if (machineBufferCount(m) > 0) {
+        for (const [id, n] of Object.entries(m.buffer)) {
           buffer[id] = (buffer[id] ?? 0) + n;
           pulled += n;
         }
-        await storeMachine(x + dx, y + dy, { ...srcMachine, buffer: {}, updatedAt: now });
+        await storeMachine(node.cx, node.cy, { ...m, buffer: {}, updatedAt: now });
       }
     }
+
+    if (routeMode === "feed_cnc" && cncTargets.length > 0) {
+      for (const target of cncTargets) {
+        const rec = recipeById(
+          target.machine.blueprint?.targetRecipeId ?? target.machine.targetRecipeId,
+        );
+        if (!rec) continue;
+        const inputs = { ...(target.machine.inputs ?? {}) };
+        let moved = 0;
+        for (const inId of Object.keys(rec.inputs)) {
+          const avail = buffer[inId] ?? 0;
+          if (avail > 0) {
+            inputs[inId] = (inputs[inId] ?? 0) + avail;
+            delete buffer[inId];
+            moved += avail;
+          }
+        }
+        if (moved > 0) {
+          await storeMachine(target.cx, target.cy, { ...target.machine, inputs, updatedAt: now });
+        }
+      }
+    } else if (routeMode === "feed_vending" && vendingTargets.length > 0) {
+      for (const target of vendingTargets) {
+        const slots = [...(target.machine.vending ?? [])];
+        let moved = 0;
+        for (const [id, qty] of Object.entries(buffer)) {
+          if (qty <= 0) continue;
+          const def = itemById(id);
+          if (!def) continue;
+          const idx = slots.findIndex((s) => s.itemId === id);
+          if (idx >= 0) {
+            slots[idx] = { ...slots[idx], stock: Math.min(999, slots[idx].stock + qty) };
+            delete buffer[id];
+            moved += qty;
+          } else if (slots.length < 6) {
+            slots.push({ itemId: id, price: def.price, stock: Math.min(999, qty) });
+            delete buffer[id];
+            moved += qty;
+          }
+        }
+        if (moved > 0) {
+          await storeMachine(target.cx, target.cy, {
+            ...target.machine,
+            vending: slots,
+            updatedAt: now,
+          });
+        }
+      }
+    }
+
     const nextState: MachineState = {
       ...state,
       machineType,
+      routeMode,
       buffer,
       poweredByNearby: powered,
       lastEvalAt: now,
@@ -216,6 +306,7 @@ function publicState(state: MachineState, machineType: string, isOwner: boolean)
     blueprint: state.blueprint ?? null,
     blueprintCode: state.blueprint ? encodeCustomBlueprint(state.blueprint) : null,
     targetRecipeId: state.targetRecipeId ?? null,
+    routeMode: state.routeMode ?? "buffer",
     inputs: isOwner ? (state.inputs ?? {}) : {},
     buffer: isOwner ? state.buffer : {},
     buffered: machineBufferCount(state),

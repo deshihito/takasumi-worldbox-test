@@ -22,11 +22,11 @@ export interface SlotSymbol {
 
 export const SLOT_SYMBOLS: readonly SlotSymbol[] = [
   { glyph: "7", color: "#ffd23e", weight: 1, triple: 300 },
-  { glyph: "◆", color: "#7ad0ff", weight: 3, triple: 60 },
-  { glyph: "★", color: "#ffb3e2", weight: 5, triple: 20 },
-  { glyph: "●", color: "#9dff70", weight: 8, triple: 8 },
-  { glyph: "▲", color: "#ffa25e", weight: 11, triple: 4 },
-  { glyph: "■", color: "#c9c9d6", weight: 14, triple: 3 },
+  { glyph: "diamond", color: "#7ad0ff", weight: 3, triple: 60 },
+  { glyph: "star", color: "#ffb3e2", weight: 5, triple: 20 },
+  { glyph: "circle", color: "#9dff70", weight: 8, triple: 8 },
+  { glyph: "triangle", color: "#ffa25e", weight: 11, triple: 4 },
+  { glyph: "square", color: "#c9c9d6", weight: 14, triple: 3 },
 ];
 export const SLOT_PAIR_MULTIPLIER = 1.2;
 

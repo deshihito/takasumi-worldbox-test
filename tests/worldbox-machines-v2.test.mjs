@@ -61,8 +61,8 @@ const M2 = await loadBundle(
   ],
 );
 
-test("machines v2: 全9種の近代マシンがアイコン・仕様ともに定義されている", () => {
-  assert.equal(M2.MACHINE_ITEM_IDS.length, 9);
+test("machines v2: 全10種の近代マシン（conveyor_relay含む）がアイコン・仕様・routeModeともに定義されている", () => {
+  assert.equal(M2.MACHINE_ITEM_IDS.length, 10);
   for (const id of M2.MACHINE_ITEM_IDS) {
     assert.equal(M2.isMachineItem(id), true, id);
     const item = M2.itemById(id);
@@ -72,6 +72,14 @@ test("machines v2: 全9種の近代マシンがアイコン・仕様ともに定
       `missing icon for ${id}`,
     );
   }
+  const sorter = M2.parseMachineState({
+    ownerId: "p1",
+    machineType: "logistics_sorter",
+    program: M2.defaultProgram(),
+    buffer: {},
+    routeMode: "feed_cnc",
+  });
+  assert.equal(sorter?.routeMode, "feed_cnc");
 });
 
 test("machines v2: カスタム設計ブループリント(WB2.)とカスタムマシン制作コスト計算", () => {

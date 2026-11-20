@@ -393,3 +393,87 @@ export function dailyNpcSuspects(now: number): readonly NpcSuspect[] {
     };
   });
 }
+
+export interface SpatialSpot {
+  space: string;
+  x: number;
+  y: number;
+  label: string;
+}
+
+export const CRIME_TARGET_SPOTS: Readonly<Record<CrimeTypeId, readonly SpatialSpot[]>> = {
+  pickpocket: [
+    { space: "lobby", x: 28, y: 24, label: "中央噴水広場（人混み）" },
+    { space: "lobby", x: 11, y: 24, label: "グランドバザール通り" },
+    { space: "lobby", x: 38, y: 71, label: "ハーバー祭り小路" },
+  ],
+  atm_hack: [
+    { space: "lobby", x: 40, y: 11, label: "金融街・銀行ATM" },
+    { space: "lobby", x: 43, y: 5, label: "取引所前・北ATM" },
+    { space: "lobby", x: 55, y: 5, label: "金融街・東ATM" },
+    { space: "lobby", x: 104, y: 53, label: "商業ギルド街・ATM" },
+  ],
+  smuggle_run: [
+    { space: "lobby", x: 38, y: 72, label: "ハーバー祭り小路・桟橋裏" },
+    { space: "lobby", x: 18, y: 86, label: "ハーバー西桟橋コンテナ裏" },
+  ],
+  fraud: [
+    { space: "lobby", x: 48, y: 6, label: "金融街・株式証券ボード前" },
+    { space: "lobby", x: 104, y: 52, label: "商業ギルド・取引端末" },
+  ],
+  vault_heist: [
+    { space: "lobby", x: 40, y: 10, label: "北東中央銀行・大金庫室" },
+    { space: "lobby", x: 108, y: 52, label: "南東商業ギルド金庫室" },
+  ],
+};
+
+export function nearAnyCrimeSpot(
+  crimeId: CrimeTypeId,
+  space: string,
+  x: number,
+  y: number,
+  radius = 4.2,
+): SpatialSpot | null {
+  const spots = CRIME_TARGET_SPOTS[crimeId];
+  if (!spots) return null;
+  for (const s of spots) {
+    if (s.space !== space) continue;
+    if (Math.hypot(x - (s.x + 0.5), y - (s.y + 0.5)) <= radius) return s;
+  }
+  return null;
+}
+
+/**
+ * 刑務所内の巡回看守が現在南西メンテナンス通路(脱獄導線)に接近・監視しているか判定する。
+ * 16秒周期のパトロールサイクルで、監視ウィンドウを避けて換気口へ潜り込むリアル性を持たせる。
+ */
+export function isPrisonGuardSweepingVent(now: number): boolean {
+  const phase = (now % 16_000) / 16_000;
+  // 看守が南西エリアを巡回警戒している時間帯 (0.0 .. 0.30)
+  return phase < 0.3;
+}
+
+export interface PinChallenge {
+  id: string;
+  targetSequence: number[]; // length 3..4 digits 1..4
+  hintLabel: string;
+}
+
+export function generateSecuritySequence(kind: string, seedNow: number, length = 3): PinChallenge {
+  const seq: number[] = [];
+  let h = (seedNow ^ 0x5f3759df) >>> 0;
+  for (let i = 0; i < length; i++) {
+    h = Math.imul(h ^ (h >>> 13), 1664525) + 1013904223;
+    seq.push(((h >>> 0) % 4) + 1);
+  }
+  return {
+    id: `${kind}-${seedNow}`,
+    targetSequence: seq,
+    hintLabel:
+      kind === "vault_heist"
+        ? "金庫室ダイヤル・ピン解除順序"
+        : kind === "jailbreak"
+          ? "換気ダクトボルト・ピッキング順序"
+          : "セキュリティ暗号キー解除順序",
+  };
+}

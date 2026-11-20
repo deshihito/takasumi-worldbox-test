@@ -850,7 +850,7 @@ test("クライアント: ハンバーガーメニューと空間ワープがあ
   );
 });
 
-test("クライアント: ロビー描画はピクセル固定（整数カメラ・補間オフ）で、ミニマップはロビーで隠す", () => {
+test("クライアント: ロビー描画はピクセル固定（整数カメラ・補間オフ）で、ロビー用ミニマップも描画する", () => {
   const client = fs.readFileSync(
     path.join(rootDir, "src/app/games/worldbox/WorldBoxClient.tsx"),
     "utf8",
@@ -858,11 +858,8 @@ test("クライアント: ロビー描画はピクセル固定（整数カメラ
   assert.ok(client.includes("Math.round(cw / 2 - cam.x * TILE)"), "ロビーの整数カメラが無い");
   assert.ok(client.includes("Math.round(ch / 2 - cam.y * TILE)"), "ロビーの整数カメラ（縦）が無い");
   assert.ok(client.includes("imageSmoothingEnabled = false"), "補間オフが無い");
-  assert.ok(client.includes('showMap && spaceUi === "world"'), "ミニマップがロビーでも出る");
-  assert.ok(
-    client.includes('space === "world" && showMapRef.current'),
-    "ミニマップ描画がロビーでも走る",
-  );
+  assert.ok(client.includes("showMap && ("), "ミニマップコンテナが無い");
+  assert.ok(client.includes("paintIndoorMapCanvas("), "ロビー用ミニマップ描画が走らない");
   assert.ok(client.includes("loadLobbySprites"), "ロビースプライトを読み込んでいない");
   assert.ok(client.includes("indoorData().npcs"), "店員NPCを描いていない");
 });

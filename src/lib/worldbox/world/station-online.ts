@@ -15,29 +15,28 @@ import { loadWorldBoxSave } from "../core/save-online";
 import { placedStationKinds, type StationKind } from "./tiles";
 import { loadTileOverride } from "./tiles-online";
 
+async function resolveSpaceObjects(space: string): Promise<readonly LobbyObject[] | null> {
+  if (space === "lobby") return buildLobby().objects;
+  if (space === "lobby2") return buildLobby2().objects;
+  if (space === "lobby3") return buildLobby3().objects;
+  if (space.startsWith("interior:")) {
+    const { buildSettlementInterior } = await import("./settlement-interiors");
+    const interior = buildSettlementInterior(space);
+    return interior ? interior.data.objects : null;
+  }
+  return null;
+}
+
 async function loadMyIndoorPosition(
   ownerKey: string,
 ): Promise<{ objects: readonly LobbyObject[]; tx: number; ty: number } | null> {
   if (!isPresenceEnabled()) return null;
   const presence = await loadMyPresence(ownerKey);
   if (presence) {
-    if (presence.space === "lobby") {
+    const objs = await resolveSpaceObjects(presence.space);
+    if (objs) {
       return {
-        objects: buildLobby().objects,
-        tx: Math.floor(presence.x),
-        ty: Math.floor(presence.y),
-      };
-    }
-    if (presence.space === "lobby2") {
-      return {
-        objects: buildLobby2().objects,
-        tx: Math.floor(presence.x),
-        ty: Math.floor(presence.y),
-      };
-    }
-    if (presence.space === "lobby3") {
-      return {
-        objects: buildLobby3().objects,
+        objects: objs,
         tx: Math.floor(presence.x),
         ty: Math.floor(presence.y),
       };
@@ -54,14 +53,13 @@ async function loadMyIndoorPosition(
   }
   const saved = parseSave(await loadWorldBoxSave(ownerKey));
   if (!saved) return null;
-  if (saved.space === "lobby") {
-    return { objects: buildLobby().objects, tx: Math.floor(saved.x), ty: Math.floor(saved.y) };
-  }
-  if (saved.space === "lobby2") {
-    return { objects: buildLobby2().objects, tx: Math.floor(saved.x), ty: Math.floor(saved.y) };
-  }
-  if (saved.space === "lobby3") {
-    return { objects: buildLobby3().objects, tx: Math.floor(saved.x), ty: Math.floor(saved.y) };
+  const savedObjs = await resolveSpaceObjects(saved.space);
+  if (savedObjs) {
+    return {
+      objects: savedObjs,
+      tx: Math.floor(saved.x),
+      ty: Math.floor(saved.y),
+    };
   }
   if (saved.space === "tent") {
     const profile = await loadProfile(ownerKey);

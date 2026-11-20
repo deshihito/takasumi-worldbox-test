@@ -291,6 +291,21 @@ import WorldBoxJobPanel from "./WorldBoxJobPanel";
 import WorldBoxPrisonPanel from "./WorldBoxPrisonPanel";
 import WorldBoxEngineeringPanel from "./WorldBoxEngineeringPanel";
 import WorldBoxMetroPanel from "./WorldBoxMetroPanel";
+import WorldBoxTradePanel from "./WorldBoxTradePanel";
+import WorldBoxRealEstatePanel from "./WorldBoxRealEstatePanel";
+import WorldBoxGovernancePanel from "./WorldBoxGovernancePanel";
+import {
+  APARTMENT_EXIT,
+  apartmentTileAt,
+  buildApartment,
+  parseApartmentSpace,
+} from "@/lib/worldbox/world/realestate";
+import {
+  effectiveVehicleMoveSpeed,
+  vehicleSpecFor,
+  type VehicleItemId,
+} from "@/lib/worldbox/player/vehicles";
+import { isPrisonGuardSweepingVent } from "@/lib/worldbox/social/prison";
 import {
   PRISON_H,
   PRISON_VISITOR_ENTRY,
@@ -300,6 +315,34 @@ import {
   prisonTileAt,
 } from "@/lib/worldbox/world/prison-map";
 import { ItemSlot as ItemSlotView, ItemSlotGrid } from "./ItemSlotGrid";
+import { WbIcon, drawCanvasPinGlyph } from "./WbIcon";
+import WorldBoxDealerPanel from "./WorldBoxDealerPanel";
+import WorldBoxMapModal, { paintIndoorMapCanvas, type MapSnapshot } from "./WorldBoxMapModal";
+import {
+  evaluateCitizenPose,
+  nearestSettlement,
+  settlementBuildingAdjacentDoor,
+  settlementBuildingDoorAt,
+  settlementInteriorSpace,
+  settlementRoadAt,
+  settlementSolidTilesInRect,
+  settlementSurfaceAt,
+  settlementsNear,
+  type Settlement,
+  type SettlementBuilding,
+  type SettlementBuildingKind,
+} from "@/lib/worldbox/world/settlements";
+import {
+  buildSettlementInterior,
+  parseInteriorSpace,
+  type SettlementInteriorSpec,
+} from "@/lib/worldbox/world/settlement-interiors";
+import {
+  loadLocalMapPins,
+  saveLocalMapPins,
+  type MapPin,
+  type TrackedTarget,
+} from "@/lib/worldbox/world/map-pins";
 
 const SAVE_KEY = "taka-worldbox-save-v6";
 const TILE = 44;
@@ -345,7 +388,7 @@ const COMPASS_DUNGEON_COLOR = "#b07fe8";
 
 function drawCompassOnMinimap(
   mctx: CanvasRenderingContext2D,
-  target: CompassTarget | null,
+  target: { x: number; y: number } | null,
   color: string,
   ox: number,
   oy: number,
@@ -408,10 +451,6 @@ function updateCompassHud(
       : "—";
   }
 }
-
-const BIGMAP_SIZE = 512;
-const BIGMAP_TILES = 256;
-const BIGMAP_SCALE = BIGMAP_SIZE / BIGMAP_TILES;
 
 type PlayerState = {
   x: number;
@@ -899,6 +938,7 @@ const STATION_LABEL: Record<LobbyStation, string> = {
   sell: "売却専用ショップ",
   telescope: "展望台",
   stock: "取引所",
+  dealer: "乗り物ディーラー",
   prison_work: "懲役作業ファクトリー",
   prison_desk: "刑務所 保釈・司法窓口",
   prison_escape: "地下換気ダクト",
@@ -954,9 +994,6 @@ export default function WorldBoxClient() {
   const [showEconomy, setShowEconomy] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
   const [mapView, setMapView] = useState(false);
-  const mapViewRef = useRef(false);
-  mapViewRef.current = mapView;
-  const bigMapRef = useRef<HTMLCanvasElement | null>(null);
   const [porterUi, setPorterUi] = useState<{ x: number; y: number } | null>(null);
   const porterRef = useRef<{ x: number; y: number } | null>(null);
   porterRef.current = porterUi;
@@ -1079,6 +1116,95 @@ export default function WorldBoxClient() {
   const [prisonOpen, setPrisonOpen] = useState(false);
   const [engineeringOpen, setEngineeringOpen] = useState(false);
   const [metroOpen, setMetroOpen] = useState(false);
+  const [tradeOpen, setTradeOpen] = useState(false);
+  const [tradeTarget, setTradeTarget] = useState<{ presenceId: string; name: string } | null>(null);
+  const [realEstateOpen, setRealEstateOpen] = useState(false);
+  const [governanceOpen, setGovernanceOpen] = useState(false);
+  const [equippedVehicle, setEquippedVehicle] = useState<VehicleItemId | null>(null);
+  const equippedVehicleRef = useRef<VehicleItemId | null>(null);
+  equippedVehicleRef.current = equippedVehicle;
+  const [mapPins, setMapPins] = useState<MapPin[]>([]);
+  const mapPinsRef = useRef<MapPin[]>([]);
+  mapPinsRef.current = mapPins;
+  useEffect(() => {
+    setMapPins(loadLocalMapPins());
+  }, []);
+  const [trackedTarget, setTrackedTarget] = useState<TrackedTarget | null>(null);
+  const trackedTargetRef = useRef<TrackedTarget | null>(null);
+  trackedTargetRef.current = trackedTarget;
+  const trackedDistElRef = useRef<HTMLSpanElement | null>(null);
+  const worldFloatTextsRef = useRef<
+    { x: number; y: number; space: string; text: string; color: string; startedAt: number }[]
+  >([]);
+  const pushFloatText = (x: number, y: number, text: string, color = "#facc15") => {
+    worldFloatTextsRef.current.push({
+      x,
+      y,
+      space: spaceUiRef.current,
+      text,
+      color,
+      startedAt: performance.now(),
+    });
+  };
+  const addMapPin = (pin: Omit<MapPin, "id" | "createdAt">) => {
+    const entry: MapPin = {
+      ...pin,
+      id: `pin_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: Date.now(),
+    };
+    setMapPins((prev) => {
+      const next = [entry, ...prev].slice(0, 40);
+      saveLocalMapPins(next);
+      return next;
+    });
+    setTrackedTarget({
+      kind: "pin",
+      space: entry.space,
+      x: entry.x,
+      y: entry.y,
+      label: `${entry.icon} ${entry.label}`,
+      color: entry.color,
+      pinId: entry.id,
+    });
+    pushFloatText(entry.x, entry.y - 0.5, `${entry.icon} ${entry.label}`, entry.color);
+  };
+  const deleteMapPin = (id: string) => {
+    setMapPins((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      saveLocalMapPins(next);
+      return next;
+    });
+    setTrackedTarget((cur) => (cur?.kind === "pin" && cur.pinId === id ? null : cur));
+  };
+  const setWaypoint = (wp: { space: string; x: number; y: number; label: string } | null) => {
+    if (!wp) {
+      setTrackedTarget(null);
+      return;
+    }
+    setTrackedTarget({
+      kind: "job",
+      space: wp.space,
+      x: wp.x,
+      y: wp.y,
+      label: wp.label,
+      color: "#38bdf8",
+    });
+    pushFloatText(
+      playerPosRef.current.x,
+      playerPosRef.current.y - 0.8,
+      `案内: ${wp.label}`,
+      "#38bdf8",
+    );
+  };
+  const getMapSnapshotRef = useRef<() => MapSnapshot>(() => ({
+    space: "world",
+    playerX: 0,
+    playerY: 0,
+    indoor: null,
+    nations: [],
+    porter: null,
+    players: [],
+  }));
   const forceMoveRef = useRef<((mv: { space: string; x: number; y: number }) => void) | null>(null);
   const refreshMmoRef = useRef<(() => Promise<void>) | null>(null);
   type MmoSummaryState = {
@@ -1112,6 +1238,12 @@ export default function WorldBoxClient() {
         /* noop */
       }
     };
+    void fetch("/api/worldbox/vehicles", { headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v: { equippedVehicle?: VehicleItemId | null } | null) => {
+        if (!disposed && v) setEquippedVehicle(v.equippedVehicle ?? null);
+      })
+      .catch(() => {});
     refreshMmoRef.current = load;
     void load();
     const poll = window.setInterval(() => void load(), 9000);
@@ -1131,6 +1263,41 @@ export default function WorldBoxClient() {
   const mmoFeedKind = activeNews?.kind ?? "economy";
   const [collectionSel, setCollectionSel] = useState<string | null>(null);
   const [stationUi, setStationUi] = useState<LobbyStation | null>(null);
+  const [dealerOpen, setDealerOpen] = useState(false);
+  useEffect(() => {
+    if (stationUi !== "dealer") setDealerOpen(false);
+  }, [stationUi]);
+  const [doorPrompt, setDoorPrompt] = useState<{
+    settlementName: string;
+    biomeLabel: string;
+    building: SettlementBuilding;
+    interiorSpace: string;
+  } | null>(null);
+  const doorPromptRef = useRef<{
+    settlementName: string;
+    biomeLabel: string;
+    building: SettlementBuilding;
+    interiorSpace: string;
+  } | null>(null);
+  doorPromptRef.current = doorPrompt;
+  const lastWorldDoorReturnRef = useRef<{ space: string; x: number; y: number } | null>(null);
+  const [npcDialog, setNpcDialog] = useState<{
+    name: string;
+    role: string;
+    roleLabel: string;
+    settlementName: string;
+    biomeLabel: string;
+    specialty: string;
+    phrases: string[];
+    activity: string;
+    shirtColor: string;
+    buildingKind?: SettlementBuildingKind;
+    buildingLabel?: string;
+    interiorSpace?: string;
+    doorReturn?: { x: number; y: number };
+    cx?: number;
+    cy?: number;
+  } | null>(null);
   const [worldStationKinds, setWorldStationKinds] = useState("");
   const [stationGenre, setStationGenre] = useState<ShopGenreId | null>(null);
   const [stationArcade, setStationArcade] = useState<string | null>(null);
@@ -1571,6 +1738,9 @@ export default function WorldBoxClient() {
       setPrisonOpen(false);
       setEngineeringOpen(false);
       setMetroOpen(false);
+      setTradeOpen(false);
+      setRealEstateOpen(false);
+      setGovernanceOpen(false);
       setMapView(false);
       setCasinoOpen(false);
       setRacingOpen(false);
@@ -1579,6 +1749,8 @@ export default function WorldBoxClient() {
       setFinanceOpen(false);
       setBoardOpen(false);
       setGuildBoardOpen(false);
+      setDealerOpen(false);
+      setNpcDialog(null);
       setStorageOpen(false);
       setHeldSlot(null);
       setSeedPicker(null);
@@ -1780,6 +1952,17 @@ export default function WorldBoxClient() {
       center.y + 64,
     )) {
       next.add(key);
+    }
+    for (const stl of settlementsNear(center.x, center.y, 72)) {
+      for (const st of settlementSolidTilesInRect(
+        stl,
+        center.x - 64,
+        center.y - 64,
+        center.x + 64,
+        center.y + 64,
+      )) {
+        next.add(tileKey(st.x, st.y));
+      }
     }
     blockedRef.current = next;
   };
@@ -2756,19 +2939,24 @@ export default function WorldBoxClient() {
       }
       return dungeonCache;
     };
+    const interiorNow = (): SettlementInteriorSpec | null =>
+      parseInteriorSpace(space) ? buildSettlementInterior(space) : null;
     const indoorData = (): LobbyData =>
       caveLayerNow()?.data ??
       ruinsNow()?.data ??
       dungeonNow()?.data ??
-      (space === "tent"
-        ? tentNow()
-        : space === "prison"
-          ? buildPrison()
-          : space === "lobby2"
-            ? buildLobby2()
-            : space === "lobby3"
-              ? buildLobby3()
-              : lobby);
+      interiorNow()?.data ??
+      (parseApartmentSpace(space)
+        ? buildApartment()
+        : space === "tent"
+          ? tentNow()
+          : space === "prison"
+            ? buildPrison()
+            : space === "lobby2"
+              ? buildLobby2()
+              : space === "lobby3"
+                ? buildLobby3()
+                : lobby);
     const textures = loadTextures();
     const dungeon = loadDungeonTiles();
     const lobbySprites = loadLobbySprites();
@@ -2869,6 +3057,9 @@ export default function WorldBoxClient() {
       if (inst?.kind === "cave") return rectBounds(64, 64);
       if (inst?.kind === "ruins") return rectBounds(48, 48);
       if (inst?.kind === "dungeon") return rectBounds(52, 52);
+      const intr = interiorNow();
+      if (intr) return rectBounds(intr.data.width, intr.data.height);
+      if (parseApartmentSpace(space)) return rectBounds(24, 18);
       return space === "lobby"
         ? rectBounds(LOBBY_W, LOBBY_H)
         : space === "lobby2"
@@ -2918,6 +3109,7 @@ export default function WorldBoxClient() {
     let lastBeat = 0;
     let lastDashFxAt = 0;
     let lastSwimFxAt = 0;
+    let lastDriveFxAt = 0;
     let lastAmbientAt = 0;
     let lastPhaseKind = "";
     const popScaleFor = (key: string, nowMs: number): number => {
@@ -2947,7 +3139,6 @@ export default function WorldBoxClient() {
     };
     let lastSaved = { x: player.x, y: player.y, at: 0 };
     let lastMinimapAt = 0;
-    let lastBigMapAt = 0;
     let compassCache: {
       ax: number;
       ay: number;
@@ -3047,9 +3238,11 @@ export default function WorldBoxClient() {
               ? "展望デッキ"
               : space === "prison"
                 ? "タカスミ中央刑務所"
-                : space === "tent"
-                  ? "テント"
-                  : "郊外",
+                : parseApartmentSpace(space)
+                  ? "専用メトロマンション"
+                  : space === "tent"
+                    ? "テント"
+                    : "郊外",
       );
     })();
 
@@ -3483,6 +3676,12 @@ export default function WorldBoxClient() {
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (arcadeOpenRef.current) return;
       const k = e.key.toLowerCase();
+      if (!e.repeat && k === "m") {
+        e.preventDefault();
+        playWbSe("open");
+        setMapView((v) => !v);
+        return;
+      }
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
       keys.add(k);
       if (!e.repeat && MOVE_KEYS.has(k)) {
@@ -3632,11 +3831,44 @@ export default function WorldBoxClient() {
     const handleIndoorTap = (t: { x: number; y: number }): boolean => {
       const px = Math.floor(player.x);
       const py = Math.floor(player.y);
-      if (Math.max(Math.abs(t.x - px), Math.abs(t.y - py)) > 1) return false;
+      const intr = interiorNow();
+      if (intr) {
+        for (const stf of intr.staff) {
+          if (Math.hypot(stf.x - (t.x + 0.5), stf.y - (t.y + 0.5)) <= 1.55) {
+            setNpcDialog({
+              name: stf.name,
+              role: stf.role,
+              roleLabel: stf.roleLabel,
+              settlementName: intr.settlement.name,
+              biomeLabel: intr.settlement.biomeLabel,
+              specialty: intr.settlement.specialty,
+              phrases: stf.phrases,
+              activity: "店内で対応中",
+              shirtColor: stf.shirtColor,
+              buildingKind: intr.building.kind,
+              buildingLabel: intr.building.label,
+              interiorSpace: intr.space,
+              doorReturn: intr.exteriorReturn,
+              cx: intr.settlement.cx,
+              cy: intr.settlement.cy,
+            });
+            return true;
+          }
+        }
+        if (intr.dealerBays.some((b) => Math.hypot(b.x - t.x, b.y - t.y) <= 1.6)) {
+          setDealerOpen(true);
+          return true;
+        }
+      }
+      if (Math.max(Math.abs(t.x - px), Math.abs(t.y - py)) > 2) return false;
       const obj = indoorData().objects.find(
         (o) => t.x >= o.x && t.x < o.x + o.w && t.y >= o.y && t.y < o.y + o.h,
       );
       if (!obj) return false;
+      if (obj.station === "dealer") {
+        setDealerOpen(true);
+        return true;
+      }
       if (isSeatItem(obj.sprite)) {
         const sitting = sitTileRef.current;
         if (sitting && sitting.x === t.x && sitting.y === t.y) {
@@ -3913,12 +4145,69 @@ export default function WorldBoxClient() {
         canvas.setPointerCapture(e.pointerId);
         return;
       }
-      if (space === "lobby" || space === "lobby2" || space === "lobby3" || space === "tent") {
+      if (
+        space === "lobby" ||
+        space === "lobby2" ||
+        space === "lobby3" ||
+        space === "tent" ||
+        space === "prison" ||
+        Boolean(parseInteriorSpace(space))
+      ) {
         handleIndoorTap(toTile(e));
         return;
       }
       if (space === "world" || parseInstanceSpace(space)) {
         const t = toTile(e);
+        if (space === "world") {
+          const dayNow = phaseAtTime(Date.now() / 1000);
+          const nowMsTap = Date.now();
+          for (const stl of settlementsNear(t.x + 0.5, t.y + 0.5, 36)) {
+            for (const cit of stl.citizens) {
+              const pose = evaluateCitizenPose(stl, cit, dayNow, nowMsTap);
+              if (pose.sleeping) continue;
+              if (Math.hypot(pose.x - (t.x + 0.5), pose.y - (t.y + 0.5)) <= 1.35) {
+                const workB = cit.workBuildingTag
+                  ? stl.buildings.find((bd) => bd.tag === cit.workBuildingTag)
+                  : undefined;
+                setNpcDialog({
+                  name: cit.name,
+                  role: cit.role,
+                  roleLabel: cit.roleLabel,
+                  settlementName: stl.name,
+                  biomeLabel: stl.biomeLabel,
+                  specialty: stl.specialty,
+                  phrases: cit.phrases,
+                  activity: pose.activity,
+                  shirtColor: cit.shirtColor,
+                  buildingKind: cit.workBuildingKind,
+                  buildingLabel: cit.workBuildingLabel,
+                  interiorSpace: workB ? settlementInteriorSpace(stl, workB) : undefined,
+                  doorReturn: workB ? { x: workB.porchX + 0.5, y: workB.porchY + 0.5 } : undefined,
+                  cx: stl.cx,
+                  cy: stl.cy,
+                });
+                return;
+              }
+            }
+          }
+          const doorHit = settlementBuildingDoorAt(t.x, t.y);
+          if (
+            doorHit &&
+            Math.hypot(
+              doorHit.building.doorX + 0.5 - player.x,
+              doorHit.building.doorY + 0.5 - player.y,
+            ) <= 2.6
+          ) {
+            const targetInt = settlementInteriorSpace(doorHit.settlement, doorHit.building);
+            lastWorldDoorReturnRef.current = {
+              space: targetInt,
+              x: doorHit.building.porchX + 0.5,
+              y: doorHit.building.porchY + 0.5,
+            };
+            warpToInstance(targetInt, { x: 10, y: 11.6 });
+            return;
+          }
+        }
         if (space === "world" || parseInstanceSpace(space)) {
           for (const [oid, other] of others) {
             if (Math.floor(other.track.rx) === t.x && Math.floor(other.track.ry) === t.y) {
@@ -4001,9 +4290,6 @@ export default function WorldBoxClient() {
     const miniTerrainCanvas = document.createElement("canvas");
     miniTerrainCanvas.width = MINIMAP_TILES;
     miniTerrainCanvas.height = MINIMAP_TILES;
-    const bigTerrainCanvas = document.createElement("canvas");
-    bigTerrainCanvas.width = BIGMAP_TILES;
-    bigTerrainCanvas.height = BIGMAP_TILES;
     const paintLocalTerrain = (target: HTMLCanvasElement, ox: number, oy: number, size: number) => {
       const tctx = target.getContext("2d");
       if (!tctx) return;
@@ -4014,6 +4300,26 @@ export default function WorldBoxClient() {
         }
       }
     };
+    getMapSnapshotRef.current = () => ({
+      space,
+      playerX: player.x,
+      playerY: player.y,
+      indoor: space === "world" ? null : indoorData(),
+      nations: nationsRef.current.nations.map((n) => ({
+        id: n.id,
+        name: n.name,
+        color: n.color,
+        capital: n.capital,
+      })),
+      porter: porterRef.current,
+      players: [...others.values()].map((o) => ({
+        id: o.track.entry.id,
+        name: o.track.entry.name || "プレイヤー",
+        x: o.track.rx,
+        y: o.track.ry,
+        space,
+      })),
+    });
 
     const resize = () => {
       const dpr = Math.min(1.5, window.devicePixelRatio || 1);
@@ -4242,9 +4548,11 @@ export default function WorldBoxClient() {
         setStatusText(
           mv.space === "prison"
             ? "タカスミ中央刑務所"
-            : mv.space === "lobby"
-              ? "中央広場"
-              : "共有ワールド",
+            : parseApartmentSpace(mv.space)
+              ? "専用メトロマンション"
+              : mv.space === "lobby"
+                ? "中央広場"
+                : "共有ワールド",
         );
         lastStation = null;
         setStationUi(null);
@@ -4291,6 +4599,7 @@ export default function WorldBoxClient() {
           const entry = tentEntryFor(invRef.current?.tentTier ?? 0);
           placePlayer(entry.x, entry.y);
         } else {
+          const prevSpace = space;
           space = "world";
           setSpaceUi("world");
           setStatusText("共有ワールド");
@@ -4300,7 +4609,14 @@ export default function WorldBoxClient() {
           setStationGenre(null);
           lastStationArcade = null;
           setStationArcade(null);
-          const dest = worldReturn ?? spawn;
+          setDoorPrompt(null);
+          const intrRet =
+            parseInteriorSpace(prevSpace) !== null
+              ? lastWorldDoorReturnRef.current?.space === prevSpace
+                ? lastWorldDoorReturnRef.current
+                : (buildSettlementInterior(prevSpace)?.exteriorReturn ?? null)
+              : null;
+          const dest = intrRet ?? worldReturn ?? spawn;
           placePlayer(dest.x, dest.y);
         }
         spawnBurst(fxSys, "warp", player.x, player.y - 0.3);
@@ -4338,15 +4654,19 @@ export default function WorldBoxClient() {
         if (space === "world") worldReturn = { x: player.x, y: player.y };
         space = target;
         setSpaceUi(target);
+        setDoorPrompt(null);
         const inst = parseInstanceSpace(target);
+        const intr = parseInteriorSpace(target) ? buildSettlementInterior(target) : null;
         setStatusText(
-          inst?.kind === "cave"
-            ? `採掘場 B${(inst.layer ?? 0) + 1}`
-            : inst?.kind === "ruins"
-              ? "旧市街"
-              : inst?.kind === "dungeon"
-                ? `廃ビル ${(inst.layer ?? 0) + 1}F`
-                : "インスタンス",
+          intr
+            ? `${intr.settlement.name} ・ ${intr.building.label}`
+            : inst?.kind === "cave"
+              ? `採掘場 B${(inst.layer ?? 0) + 1}`
+              : inst?.kind === "ruins"
+                ? "旧市街"
+                : inst?.kind === "dungeon"
+                  ? `廃ビル ${(inst.layer ?? 0) + 1}F`
+                  : "インスタンス",
         );
         lastStation = null;
         setStationUi(null);
@@ -4435,6 +4755,17 @@ export default function WorldBoxClient() {
       if (space === "world") {
         if (tilesRef.current[tileKey(tx, ty)]?.block?.itemId === "tent") doWarp("tent");
         else {
+          const door = settlementBuildingDoorAt(tx, ty);
+          if (door) {
+            const targetInt = settlementInteriorSpace(door.settlement, door.building);
+            lastWorldDoorReturnRef.current = {
+              space: targetInt,
+              x: door.building.porchX + 0.5,
+              y: door.building.porchY + 0.5,
+            };
+            warpToInstance(targetInt, { x: 10, y: 11.6 });
+            return;
+          }
           const st = structureAt(tx, ty);
           const stDef = st ? structureById(st.structureId) : null;
           if (stDef?.kind === "entrance" && stDef.targetSpace === "cave") {
@@ -4454,6 +4785,13 @@ export default function WorldBoxClient() {
           }
         }
         return;
+      }
+      {
+        const intr = interiorNow();
+        if (intr && ty >= intr.exitMat.y && (tx === intr.exitMat.x || tx === intr.exitMat.x + 1)) {
+          doWarp("world");
+          return;
+        }
       }
       {
         const inst = parseInstanceSpace(space);
@@ -4543,6 +4881,10 @@ export default function WorldBoxClient() {
         if (tx === exit.x && ty === exit.y) doWarp("world");
         return;
       }
+      if (parseApartmentSpace(space)) {
+        if (tx === APARTMENT_EXIT.x && ty === APARTMENT_EXIT.y) doWarp("lobby");
+        return;
+      }
       const floorWarp = floorWarpAt(space, tx, ty);
       if (floorWarp) {
         doFloorWarp(floorWarp.to, floorWarp.entry);
@@ -4625,6 +4967,18 @@ export default function WorldBoxClient() {
         telescopeCam = null;
         telescopeDrag = null;
       }
+      const stlSurface =
+        space === "world"
+          ? (() => {
+              const ptx = Math.floor(player.x);
+              const pty = Math.floor(player.y);
+              for (const stl of settlementsNear(ptx, pty, 32)) {
+                const sf = settlementSurfaceAt(stl, ptx, pty);
+                if (sf) return sf;
+              }
+              return null;
+            })()
+          : null;
       const floorOv =
         space === "world"
           ? tilesRef.current[tileKey(Math.floor(player.x), Math.floor(player.y))]
@@ -4633,7 +4987,10 @@ export default function WorldBoxClient() {
         floorOv?.block && isOverrideActive(floorOv, Date.now()) ? floorOv.block.itemId : null;
       const onFloor = floorRaw !== null && isFloorItem(floorRaw) ? floorRaw : null;
       const swimming =
-        space === "world" && onFloor !== "bridge_block" && isWaterAt(worldMap, player.x, player.y);
+        space === "world" &&
+        onFloor !== "bridge_block" &&
+        stlSurface !== "pier" &&
+        isWaterAt(worldMap, player.x, player.y);
       const wantDash =
         ilen > 0.01 &&
         ((dashKey !== null && keys.has(dashKey)) || (joy.active && isStickDash(joy.dx, joy.dy)));
@@ -4643,11 +5000,23 @@ export default function WorldBoxClient() {
       if (swimming) {
         moveSpeed = dashing ? SWIM_DASH_SPEED : SWIM_SPEED;
         staminaUse = dashing ? "swimDash" : "swim";
-      } else if (dashing) {
-        moveSpeed = DASH_SPEED;
-        staminaUse = "dash";
+      } else {
+        const vSpeed = effectiveVehicleMoveSpeed(
+          equippedVehicleRef.current,
+          onFloor === "path_block" ||
+            stlSurface === "road" ||
+            stlSurface === "plaza" ||
+            stlSurface === "pier",
+          false,
+        );
+        if (vSpeed) {
+          moveSpeed = dashing ? vSpeed : Math.max(WALK_SPEED, Number((vSpeed * 0.92).toFixed(2)));
+        } else if (dashing) {
+          moveSpeed = DASH_SPEED;
+          staminaUse = "dash";
+        }
       }
-      if (!swimming) moveSpeed *= floorSpeedMultiplier(onFloor);
+      if (!swimming && !equippedVehicleRef.current) moveSpeed *= floorSpeedMultiplier(onFloor);
       if (
         circleHitsSolid(activeMap(), player.x, player.y, PLAYER_RADIUS * 0.5, activeBlocked(), {
           swim: space === "world",
@@ -4738,7 +5107,15 @@ export default function WorldBoxClient() {
       if (space !== "world") {
         const tx = Math.floor(player.x);
         const ty = Math.floor(player.y);
-        const st = stationNear(indoorData().objects, tx, ty);
+        const intr = interiorNow();
+        let st = stationNear(indoorData().objects, tx, ty);
+        if (
+          !st &&
+          intr &&
+          intr.dealerBays.some((b) => Math.hypot(b.x + 0.5 - player.x, b.y + 0.5 - player.y) <= 2.1)
+        ) {
+          st = "dealer";
+        }
         if (st !== lastStation) {
           lastStation = st;
           setStationUi(st);
@@ -4760,6 +5137,25 @@ export default function WorldBoxClient() {
         }
       }
       if (space === "world") {
+        const adj = settlementBuildingAdjacentDoor(player.x, player.y);
+        const nextDoorKey = adj ? `${adj.settlement.id}:${adj.building.tag}` : "";
+        if (
+          nextDoorKey !== (doorPromptRef.current ? `${doorPromptRef.current.interiorSpace}` : "")
+        ) {
+          if (adj) {
+            const intrSpace = settlementInteriorSpace(adj.settlement, adj.building);
+            if (doorPromptRef.current?.interiorSpace !== intrSpace) {
+              setDoorPrompt({
+                settlementName: adj.settlement.name,
+                biomeLabel: adj.settlement.biomeLabel,
+                building: adj.building,
+                interiorSpace: intrSpace,
+              });
+            }
+          } else if (doorPromptRef.current !== null) {
+            setDoorPrompt(null);
+          }
+        }
         const kinds = new Set<string>();
         const px = Math.floor(player.x);
         const py = Math.floor(player.y);
@@ -4832,13 +5228,25 @@ export default function WorldBoxClient() {
         lastSwimFxAt = now;
         spawnBurst(fxSys, "step", player.x, player.y, { color: "#7cc0e8" });
       }
+      if (
+        equippedVehicleRef.current &&
+        !playerSwimming &&
+        speed > 2.4 &&
+        now - lastDriveFxAt > 75 &&
+        !reducedMotion
+      ) {
+        lastDriveFxAt = now;
+        spawnBurst(fxSys, "step", player.x - player.vx * 0.04, player.y + 0.05, {
+          color: "#cbd5e1",
+        });
+      }
       playerPosRef.current.x = player.x;
       playerPosRef.current.y = player.y;
 
       const lookX = telescopeCam ? telescopeCam.x : player.x + player.vx * 0.35;
       const lookY = telescopeCam ? telescopeCam.y : player.y + player.vy * 0.35;
-      cam.x = damp(cam.x, lookX, telescopeCam ? 14 : 6, dt);
-      cam.y = damp(cam.y, lookY, telescopeCam ? 14 : 6, dt);
+      cam.x = damp(cam.x, lookX, telescopeCam ? 14 : 7.5, dt);
+      cam.y = damp(cam.y, lookY, telescopeCam ? 14 : 7.5, dt);
 
       const nowMs = Date.now();
       const presenceNowMs = presenceNow();
@@ -4886,6 +5294,60 @@ export default function WorldBoxClient() {
             else {
               ctx.fillStyle = TILE_FALLBACK[id] ?? "#57a639";
               ctx.fillRect(sx, sy, TILE + 1, TILE + 1);
+            }
+          }
+        }
+        {
+          const roadStls = settlementsNear(cam.x, cam.y, 44);
+          for (const stl of roadStls) {
+            const rMinX = Math.max(tx0, stl.cx - stl.radius);
+            const rMaxX = Math.min(tx1, stl.cx + stl.radius);
+            const rMinY = Math.max(ty0, stl.cy - stl.radius);
+            const rMaxY = Math.min(ty1, stl.cy + stl.radius);
+            for (let ty = rMinY; ty <= rMaxY; ty++) {
+              for (let tx = rMinX; tx <= rMaxX; tx++) {
+                const surfKind = settlementSurfaceAt(stl, tx, ty) ?? settlementRoadAt(stl, tx, ty);
+                if (!surfKind) continue;
+                const roadSx = tileSx(tx);
+                const roadSy = tileSy(ty);
+                if (surfKind === "plaza") {
+                  ctx.fillStyle = "#94a3b8";
+                  ctx.fillRect(roadSx, roadSy, TILE + 1, TILE + 1);
+                  ctx.strokeStyle = "rgba(30,41,59,0.24)";
+                  ctx.lineWidth = 1;
+                  ctx.strokeRect(roadSx + 1, roadSy + 1, TILE - 2, TILE - 2);
+                } else if (surfKind === "pier") {
+                  ctx.fillStyle = "#8c5a32";
+                  ctx.fillRect(roadSx, roadSy, TILE + 1, TILE + 1);
+                  ctx.fillStyle = "#5c391e";
+                  for (let pyOff = 6; pyOff < TILE; pyOff += 10) {
+                    ctx.fillRect(roadSx, roadSy + pyOff, TILE + 1, 2);
+                  }
+                  ctx.fillStyle = "#cbd5e1";
+                  ctx.fillRect(roadSx + 3, roadSy + 3, 4, 4);
+                  ctx.fillRect(roadSx + TILE - 7, roadSy + 3, 4, 4);
+                } else if (surfKind === "farm") {
+                  ctx.fillStyle = "#5c3d22";
+                  ctx.fillRect(roadSx, roadSy, TILE + 1, TILE + 1);
+                  ctx.fillStyle = "#3e2714";
+                  for (let fyOff = 7; fyOff < TILE; fyOff += 11) {
+                    ctx.fillRect(roadSx + 2, roadSy + fyOff, TILE - 4, 3);
+                  }
+                  ctx.fillStyle = "#22c55e";
+                  for (let fxOff = 6; fxOff < TILE - 4; fxOff += 10) {
+                    ctx.fillRect(roadSx + fxOff, roadSy + 4, 5, 5);
+                    ctx.fillRect(roadSx + fxOff, roadSy + 22, 5, 5);
+                  }
+                } else {
+                  ctx.fillStyle = "#475569";
+                  ctx.fillRect(roadSx, roadSy, TILE + 1, TILE + 1);
+                  ctx.fillStyle = "rgba(226,232,240,0.45)";
+                  if (tx === stl.cx && ty % 2 === 0)
+                    ctx.fillRect(roadSx + TILE / 2 - 1, roadSy + 6, 2, TILE - 12);
+                  else if (ty === stl.cy && tx % 2 === 0)
+                    ctx.fillRect(roadSx + 6, roadSy + TILE / 2 - 1, TILE - 12, 2);
+                }
+              }
             }
           }
         }
@@ -5144,17 +5606,20 @@ export default function WorldBoxClient() {
         ctx.imageSmoothingEnabled = false;
         for (let ty = ly0; ty <= ly1; ty++) {
           for (let tx = lx0; tx <= lx1; tx++) {
-            const id = parseInstanceSpace(space)
-              ? (indoor.tiles[ty * indoor.width + tx] ?? 0)
-              : space === "tent"
-                ? tentTileAt(indoor.tiles, indoor.width, indoor.height, tx, ty)
-                : space === "prison"
-                  ? prisonTileAt(indoor.tiles, tx, ty)
-                  : space === "lobby2"
-                    ? lobby2TileAt(indoor.tiles, tx, ty)
-                    : space === "lobby3"
-                      ? lobby3TileAt(indoor.tiles, tx, ty)
-                      : lobbyTileAt(indoor.tiles, tx, ty);
+            const id =
+              parseInstanceSpace(space) || parseInteriorSpace(space)
+                ? (indoor.tiles[ty * indoor.width + tx] ?? 0)
+                : parseApartmentSpace(space)
+                  ? apartmentTileAt(indoor.tiles, tx, ty)
+                  : space === "tent"
+                    ? tentTileAt(indoor.tiles, indoor.width, indoor.height, tx, ty)
+                    : space === "prison"
+                      ? prisonTileAt(indoor.tiles, tx, ty)
+                      : space === "lobby2"
+                        ? lobby2TileAt(indoor.tiles, tx, ty)
+                        : space === "lobby3"
+                          ? lobby3TileAt(indoor.tiles, tx, ty)
+                          : lobbyTileAt(indoor.tiles, tx, ty);
             if (id === L_VOID) continue;
             const sx = lobbyOx + tx * TILE;
             const sy = lobbyOy + ty * TILE;
@@ -5169,6 +5634,24 @@ export default function WorldBoxClient() {
               ctx.fillStyle = "rgba(255,255,255,0.10)";
               ctx.fillRect(sx, sy, TILE, TILE);
             }
+          }
+        }
+        {
+          const intrDraw = interiorNow();
+          if (intrDraw) {
+            const ex = Math.round(lobbyOx + intrDraw.exitMat.x * TILE);
+            const ey = Math.round(lobbyOy + intrDraw.exitMat.y * TILE);
+            const ew = intrDraw.exitMat.w * TILE;
+            const eh = intrDraw.exitMat.h * TILE;
+            ctx.fillStyle = "rgba(74, 222, 128, 0.35)";
+            ctx.fillRect(ex + 2, ey + 2, ew - 4, eh - 4);
+            ctx.strokeStyle = "#4ade80";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(ex + 2, ey + 2, ew - 4, eh - 4);
+            ctx.font = "800 10.5px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#ecfdf5";
+            ctx.fillText("EXIT / 外へ", ex + ew / 2, ey + eh / 2 + 4);
           }
         }
         {
@@ -5220,6 +5703,219 @@ export default function WorldBoxClient() {
       }
 
       const drawList: { y: number; draw: () => void }[] = [];
+      if (space === "world") {
+        const dayPhase = phaseAtTime(nowMs / 1000);
+        const nightAmt = nightAmount(dayPhase);
+        const nearStls = settlementsNear(cam.x, cam.y, 44);
+        for (const stl of nearStls) {
+          for (const lamp of stl.lamps) {
+            const lx = toScreenX(lamp.x + 0.5);
+            const ly = toScreenY(lamp.y + 0.85);
+            if (lx < -TILE * 2 || ly < -TILE * 2 || lx > cw + TILE * 2 || ly > ch + TILE * 2) {
+              continue;
+            }
+            drawList.push({
+              y: lamp.y + 0.9,
+              draw: () => {
+                ctx.fillStyle = "rgba(10,16,24,0.28)";
+                ctx.beginPath();
+                ctx.ellipse(lx, ly + 2, TILE * 0.18, TILE * 0.08, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#334155";
+                ctx.fillRect(lx - 2, ly - TILE * 0.72, 4, TILE * 0.72);
+                ctx.fillStyle = nightAmt > 0.12 ? "#fde047" : "#cbd5e1";
+                ctx.beginPath();
+                ctx.arc(lx, ly - TILE * 0.78, 5, 0, Math.PI * 2);
+                ctx.fill();
+              },
+            });
+          }
+
+          for (const b of stl.buildings) {
+            const bx = toScreenX(b.x);
+            const by = toScreenY(b.y);
+            const bw = b.w * TILE;
+            const bh = b.h * TILE;
+            if (
+              bx + bw < -TILE * 2 ||
+              by + bh < -TILE * 2 ||
+              bx > cw + TILE * 2 ||
+              by > ch + TILE * 2
+            ) {
+              continue;
+            }
+            const doorPx = toScreenX(b.doorX);
+            const doorPy = toScreenY(b.doorY);
+            const porchPx = toScreenX(b.porchX);
+            const porchPy = toScreenY(b.porchY);
+            drawList.push({
+              y: b.y + b.h,
+              draw: () => {
+                // Welcome mat on street outside doorway
+                ctx.fillStyle = b.signColor;
+                ctx.fillRect(porchPx + 8, porchPy + 12, TILE - 16, TILE - 20);
+                ctx.fillStyle = "rgba(15,23,42,0.55)";
+                ctx.fillRect(porchPx + 11, porchPy + 15, TILE - 22, TILE - 26);
+
+                // Drop shadow & plinth
+                ctx.fillStyle = "rgba(8,12,20,0.32)";
+                ctx.fillRect(bx + 4, by + bh - 4, bw - 4, 8);
+                // Main exterior masonry / timber wall
+                ctx.fillStyle = b.wallColor;
+                ctx.fillRect(bx + 2, by + TILE * 0.42, bw - 4, bh - TILE * 0.42);
+                ctx.fillStyle = b.trimColor;
+                ctx.fillRect(bx + 2, by + bh - 7, bw - 4, 7);
+                ctx.strokeStyle = "rgba(15,23,42,0.78)";
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(bx + 2, by + TILE * 0.42, bw - 4, bh - TILE * 0.42);
+                // Pitched roof overhang
+                ctx.fillStyle = b.roofColor;
+                ctx.fillRect(bx - 1, by, bw + 2, TILE * 0.56);
+                ctx.fillStyle = "rgba(255,255,255,0.22)";
+                ctx.fillRect(bx, by + 3, bw, 4);
+                ctx.fillStyle = "rgba(15,23,42,0.25)";
+                ctx.fillRect(bx - 1, by + TILE * 0.56 - 4, bw + 2, 4);
+                // Storefront awning for commercial buildings
+                if (b.kind === "cafe" || b.kind === "convenience" || b.kind === "vehicle_dealer") {
+                  const stripeW = Math.max(8, (bw - 12) / 6);
+                  for (let si = 0; si < 6; si++) {
+                    ctx.fillStyle = si % 2 === 0 ? b.signColor : "#f8fafc";
+                    ctx.fillRect(bx + 6 + si * stripeW, by + TILE * 0.56, stripeW, 7);
+                  }
+                }
+                // Warm lit windows
+                const cols = Math.max(2, b.w - 1);
+                for (let ci = 0; ci < cols; ci++) {
+                  const wx = bx + 12 + ci * ((bw - 24) / cols);
+                  const wy = by + TILE * 0.85;
+                  ctx.fillStyle = "#1e293b";
+                  ctx.fillRect(wx - 1.5, wy - 1.5, 13, 12);
+                  ctx.fillStyle = nightAmt > 0.12 ? "#fde68a" : "#bae6fd";
+                  ctx.fillRect(wx, wy, 10, 9);
+                }
+                // Physical enterable doorway portal at exact (doorX, doorY)
+                ctx.fillStyle = "#1e293b";
+                ctx.fillRect(doorPx + 8, doorPy + TILE - 28, TILE - 16, 28);
+                ctx.fillStyle = nightAmt > 0.12 ? "#fcd34d" : "#fef08a";
+                ctx.fillRect(doorPx + 11, doorPy + TILE - 25, TILE - 22, 23);
+                ctx.fillStyle = b.signColor;
+                ctx.fillRect(doorPx + 7, doorPy + TILE - 31, TILE - 14, 4);
+
+                // Shop sign nameplate + IN pill
+                ctx.font = "700 10.5px sans-serif";
+                ctx.textAlign = "center";
+                const tagTitle = `[${b.signText}] ${b.label}`;
+                const tw = Math.min(bw + 32, ctx.measureText(tagTitle).width + 12);
+                ctx.fillStyle = "rgba(12,18,30,0.88)";
+                ctx.fillRect(bx + bw / 2 - tw / 2, by - 17, tw, 15);
+                ctx.strokeStyle = b.signColor;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(bx + bw / 2 - tw / 2, by - 17, tw, 15);
+                ctx.fillStyle = "#f8fafc";
+                ctx.fillText(tagTitle, bx + bw / 2, by - 6);
+              },
+            });
+          }
+
+          for (const cit of stl.citizens) {
+            const pose = evaluateCitizenPose(stl, cit, dayPhase, nowMs);
+            if (pose.sleeping) continue;
+            const sx = toScreenX(pose.x);
+            const sy = toScreenY(pose.y) + TILE * PLAYER_RADIUS;
+            if (sx < -TILE * 3 || sy < -TILE * 3 || sx > cw + TILE * 3 || sy > ch + TILE * 3) {
+              continue;
+            }
+            const nearPlayer = Math.hypot(pose.x - player.x, pose.y - player.y) <= 3.6;
+            const roleSym =
+              cit.role === "guard"
+                ? "[警]"
+                : cit.role === "barista"
+                  ? "[茶]"
+                  : cit.role === "dealer_staff"
+                    ? "[車]"
+                    : cit.role === "merchant"
+                      ? "[商]"
+                      : cit.role === "banker"
+                        ? "[銀]"
+                        : cit.role === "smith"
+                          ? "[鍛]"
+                          : cit.role === "mayor"
+                            ? "[庁]"
+                            : cit.role === "farmer"
+                              ? "[農]"
+                              : "[市]";
+            drawList.push({
+              y: pose.y + PLAYER_RADIUS,
+              draw: () => {
+                drawAvatar(
+                  ctx,
+                  sx,
+                  sy,
+                  pose.face,
+                  pose.walkPhase,
+                  Math.min(1, pose.walkSpeed / WALK_SPEED),
+                  cit.name,
+                  cit.shirtColor,
+                  false,
+                  { roleSymbol: roleSym, rank: 1 },
+                  false,
+                  null,
+                );
+                if (nearPlayer && cit.phrases.length > 0) {
+                  const phrase =
+                    cit.phrases[
+                      Math.floor((nowMs / 6500 + cit.phaseOffset) % cit.phrases.length)
+                    ] ?? pose.activity;
+                  ctx.save();
+                  ctx.font = "600 11px sans-serif";
+                  ctx.textAlign = "center";
+                  const btw = ctx.measureText(phrase).width + 14;
+                  const bx0 = sx - btw / 2;
+                  const by0 = sy - TILE * 1.95;
+                  ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+                  ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
+                  ctx.lineWidth = 1.2;
+                  ctx.beginPath();
+                  ctx.roundRect(bx0, by0, btw, 20, 6);
+                  ctx.fill();
+                  ctx.stroke();
+                  ctx.fillStyle = "#e2e8f0";
+                  ctx.fillText(phrase, sx, by0 + 13.5);
+                  ctx.restore();
+                }
+              },
+            });
+          }
+        }
+
+        for (const pin of mapPinsRef.current) {
+          if (pin.space !== "world") continue;
+          const sx = toScreenX(pin.x + 0.5);
+          const sy = toScreenY(pin.y + 0.5);
+          if (sx < -TILE * 2 || sy < -TILE * 2 || sx > cw + TILE * 2 || sy > ch + TILE * 2) {
+            continue;
+          }
+          drawList.push({
+            y: pin.y + 0.7,
+            draw: () => {
+              const bob = Math.sin(now / 260) * 2;
+              ctx.fillStyle = "rgba(8,12,20,0.35)";
+              ctx.beginPath();
+              ctx.ellipse(sx, sy + 2, 7, 3, 0, 0, Math.PI * 2);
+              ctx.fill();
+              drawCanvasPinGlyph(ctx, pin.icon, sx, sy - 14 + bob, 9.5, pin.color);
+              ctx.font = "700 10.5px sans-serif";
+              ctx.textAlign = "center";
+              const label = pin.label;
+              const tw = ctx.measureText(label).width + 8;
+              ctx.fillStyle = "rgba(10,16,28,0.85)";
+              ctx.fillRect(sx - tw / 2, sy - 34 + bob, tw, 14);
+              ctx.fillStyle = "#ffffff";
+              ctx.fillText(label, sx, sy - 23.5 + bob);
+            },
+          });
+        }
+      }
       for (const o of others.values()) {
         const nationColor = nationsRef.current.playerNations[o.track.entry.id]?.color ?? null;
         const oSwim = space === "world" && isWaterAt(worldMap, o.track.rx, o.track.ry);
@@ -5335,20 +6031,81 @@ export default function WorldBoxClient() {
           }
           drawList.push({ y: o.y + o.h, draw: () => drawLobbySprite(o) });
         }
-        for (const n of indoorData().npcs) {
-          drawList.push({
-            y: n.y + 1,
-            draw: () =>
-              drawAvatar(
-                ctx,
-                Math.round(lobbyOx + (n.x + 0.5) * TILE),
-                Math.round(lobbyOy + (n.y + 1) * TILE),
-                1,
-                0,
-                0,
-                null,
-              ),
-          });
+        const intrDraw2 = interiorNow();
+        if (intrDraw2) {
+          for (const bay of intrDraw2.dealerBays) {
+            const spec = vehicleSpecFor(bay.vehicleId);
+            const bx = Math.round(lobbyOx + (bay.x + 0.5) * TILE);
+            const by = Math.round(lobbyOy + (bay.y + 0.5) * TILE);
+            drawList.push({
+              y: bay.y + 0.9,
+              draw: () => {
+                ctx.fillStyle = "rgba(15,23,42,0.72)";
+                ctx.beginPath();
+                ctx.ellipse(bx, by + 6, TILE * 0.72, TILE * 0.34, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = bay.accent;
+                ctx.lineWidth = 1.6;
+                ctx.stroke();
+
+                const cw2 = TILE * 1.18;
+                const ch2 = TILE * 0.52;
+                ctx.fillStyle = spec?.bodyColor ?? bay.accent;
+                ctx.fillRect(bx - cw2 / 2, by - ch2 * 0.7, cw2, ch2);
+                ctx.strokeStyle = spec?.trimColor ?? "#f8fafc";
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(bx - cw2 / 2, by - ch2 * 0.7, cw2, ch2);
+                ctx.fillStyle = "#bae6fd";
+                ctx.fillRect(bx - cw2 * 0.25, by - ch2 * 0.55, cw2 * 0.5, ch2 * 0.35);
+
+                ctx.font = "700 10px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#e2e8f0";
+                ctx.fillText(bay.label, bx, by - ch2 * 0.9);
+                ctx.fillStyle = "#fde047";
+                ctx.fillText(`¥${bay.price.toLocaleString()}`, bx, by + TILE * 0.6);
+              },
+            });
+          }
+          for (const stf of intrDraw2.staff) {
+            drawList.push({
+              y: stf.y + 1,
+              draw: () => {
+                const sx = Math.round(lobbyOx + stf.x * TILE);
+                const sy = Math.round(lobbyOy + (stf.y + 0.6) * TILE);
+                drawAvatar(
+                  ctx,
+                  sx,
+                  sy,
+                  1,
+                  0,
+                  0,
+                  stf.name,
+                  stf.shirtColor,
+                  false,
+                  { roleSymbol: `[${stf.roleLabel.slice(0, 2)}]`, rank: 1 },
+                  false,
+                  null,
+                );
+              },
+            });
+          }
+        } else {
+          for (const n of indoorData().npcs) {
+            drawList.push({
+              y: n.y + 1,
+              draw: () =>
+                drawAvatar(
+                  ctx,
+                  Math.round(lobbyOx + (n.x + 0.5) * TILE),
+                  Math.round(lobbyOy + (n.y + 1) * TILE),
+                  1,
+                  0,
+                  0,
+                  null,
+                ),
+            });
+          }
         }
       }
       const selfFloorOv =
@@ -5361,13 +6118,36 @@ export default function WorldBoxClient() {
           : 0;
       drawList.push({
         y: player.y + PLAYER_RADIUS,
-        draw: () =>
-          drawAvatar(
-            ctx,
-            space !== "world" ? Math.round(lobbyOx + player.x * TILE) : toScreenX(player.x),
+        draw: () => {
+          const sx =
+            space !== "world" ? Math.round(lobbyOx + player.x * TILE) : toScreenX(player.x);
+          const sy =
             (space !== "world"
               ? Math.round(lobbyOy + player.y * TILE) + TILE * PLAYER_RADIUS
-              : toScreenY(player.y) + TILE * PLAYER_RADIUS) - slimeBouncePx,
+              : toScreenY(player.y) + TILE * PLAYER_RADIUS) - slimeBouncePx;
+          const vSpec = vehicleSpecFor(equippedVehicleRef.current);
+          if (vSpec && !playerSwimming) {
+            const w = TILE * 1.15;
+            const h = TILE * 0.48;
+            ctx.fillStyle = "rgba(0,0,0,0.35)";
+            ctx.beginPath();
+            ctx.ellipse(sx, sy + 2, w * 0.55, h * 0.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = vSpec.bodyColor;
+            ctx.fillRect(sx - w / 2, sy - h * 0.65, w, h);
+            ctx.strokeStyle = vSpec.trimColor;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(sx - w / 2, sy - h * 0.65, w, h);
+            if (vSpec.hasSiren) {
+              const flash = Math.floor(now / 180) % 2 === 0;
+              ctx.fillStyle = flash ? "#ef4444" : "#3b82f6";
+              ctx.fillRect(sx - 6, sy - h * 0.8, 12, 4);
+            }
+          }
+          drawAvatar(
+            ctx,
+            sx,
+            vSpec && !playerSwimming ? sy - 5 : sy,
             player.face,
             player.phase,
             speedRatio,
@@ -5377,7 +6157,8 @@ export default function WorldBoxClient() {
             null,
             sitTileRef.current !== null,
             iconFor(myIconUrl),
-          ),
+          );
+        },
       });
       if (space === "lobby") {
         const sched = scheduleAt(Date.now());
@@ -5470,6 +6251,98 @@ export default function WorldBoxClient() {
         ctx.strokeText(label, gx, gy - 15);
         ctx.fillStyle = "#ffffff";
         ctx.fillText(label, gx, gy - 15);
+      }
+
+      if (space === "prison") {
+        const ts = Date.now();
+        const sweep = isPrisonGuardSweepingVent(ts);
+        const phase = (ts % 16_000) / 16_000;
+        const guardX = phase < 0.3 ? 6.5 : 13.5 - Math.abs(phase - 0.65) * 10;
+        const guardY = 25.5;
+        const gx = Math.round(lobbyOx + guardX * TILE);
+        const gy = Math.round(lobbyOy + guardY * TILE);
+        ctx.save();
+        ctx.fillStyle = sweep ? "rgba(239, 68, 68, 0.24)" : "rgba(250, 204, 21, 0.14)";
+        ctx.beginPath();
+        ctx.moveTo(gx, gy);
+        const dir = phase < 0.3 ? Math.PI : 0;
+        ctx.arc(gx, gy, TILE * 3.4, dir - 0.55, dir + 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#1e3a8a";
+        ctx.beginPath();
+        ctx.arc(gx, gy, TILE * 0.32, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.font = "700 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillStyle = sweep ? "#fca5a5" : "#fef08a";
+        ctx.fillText(sweep ? "巡回看守 [警戒中]" : "巡回看守", gx, gy - 16);
+        ctx.restore();
+      }
+
+      const trNow = trackedTargetRef.current;
+      if (trNow) {
+        let txTile: number | null = null;
+        let tyTile: number | null = null;
+        let sameSpace = false;
+        if (trNow.kind === "player") {
+          const otherPl = others.get(trNow.presenceId);
+          if (otherPl) {
+            txTile = otherPl.track.rx;
+            tyTile = otherPl.track.ry;
+            sameSpace = true;
+          }
+        } else if (trNow.space === space) {
+          txTile = trNow.x + 0.5;
+          tyTile = trNow.y + 0.5;
+          sameSpace = true;
+        }
+
+        if (sameSpace && txTile !== null && tyTile !== null) {
+          const pxScreen =
+            space === "world" ? toScreenX(player.x) : Math.round(lobbyOx + player.x * TILE);
+          const pyScreen =
+            space === "world" ? toScreenY(player.y) : Math.round(lobbyOy + player.y * TILE);
+          const txScreen =
+            space === "world" ? toScreenX(txTile) : Math.round(lobbyOx + txTile * TILE);
+          const tyScreen =
+            space === "world" ? toScreenY(tyTile) : Math.round(lobbyOy + tyTile * TILE);
+          const dist = Math.hypot(txTile - player.x, tyTile - player.y);
+          if (trackedDistElRef.current) {
+            trackedDistElRef.current.textContent = `${Math.round(dist)}m`;
+          }
+          const near = dist <= 4.5;
+          const ang = Math.atan2(tyScreen - pyScreen, txScreen - pxScreen);
+
+          ctx.save();
+          ctx.strokeStyle = near ? "#4ade80" : (trNow.color ?? "#38bdf8");
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(txScreen, tyScreen, TILE * (0.55 + Math.sin(now / 180) * 0.12), 0, Math.PI * 2);
+          ctx.stroke();
+
+          if (dist > 2) {
+            const ax = pxScreen + Math.cos(ang) * TILE * 1.3;
+            const ay = pyScreen + Math.sin(ang) * TILE * 1.3;
+            ctx.translate(ax, ay);
+            ctx.rotate(ang);
+            ctx.fillStyle = near ? "#4ade80" : (trNow.color ?? "#38bdf8");
+            ctx.beginPath();
+            ctx.moveTo(10, 0);
+            ctx.lineTo(-6, -6);
+            ctx.lineTo(-3, 0);
+            ctx.lineTo(-6, 6);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+        } else if (trackedDistElRef.current) {
+          trackedDistElRef.current.textContent =
+            trNow.kind === "player" ? "他エリア/圏外" : "別エリア";
+        }
       }
 
       if (space !== "world") {
@@ -5902,11 +6775,55 @@ export default function WorldBoxClient() {
             const ly = Number(key.slice(comma + 1));
             punch(toScreenX(lx + 0.5), toScreenY(ly + 0.5), rTiles);
           }
+          for (const stl of settlementsNear(cam.x, cam.y, 44)) {
+            for (const lamp of stl.lamps) {
+              punch(toScreenX(lamp.x + 0.5), toScreenY(lamp.y + 0.5), 4.6);
+            }
+          }
           dctx.globalCompositeOperation = "source-over";
           ctx.drawImage(dark, 0, 0, cw, ch);
+          for (const stl of settlementsNear(cam.x, cam.y, 44)) {
+            for (const lamp of stl.lamps) {
+              const lsx = toScreenX(lamp.x + 0.5);
+              const lsy = toScreenY(lamp.y + 0.5);
+              const r = TILE * 2.2;
+              if (lsx < -r || lsy < -r || lsx > cw + r || lsy > ch + r) continue;
+              const g = ctx.createRadialGradient(lsx, lsy, 2, lsx, lsy, r);
+              g.addColorStop(0, `rgba(253, 224, 71, ${(night * 0.22).toFixed(3)})`);
+              g.addColorStop(1, "rgba(253, 224, 71, 0)");
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              ctx.arc(lsx, lsy, r, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
         } else {
           ctx.fillStyle = `rgba(9,13,42,${(night * 0.36).toFixed(3)})`;
           ctx.fillRect(0, 0, cw, ch);
+        }
+      }
+
+      if (worldFloatTextsRef.current.length > 0) {
+        worldFloatTextsRef.current = worldFloatTextsRef.current.filter(
+          (f) => now - f.startedAt < 1800,
+        );
+        for (const ft of worldFloatTextsRef.current) {
+          if (ft.space !== space) continue;
+          const age = Math.max(0, Math.min(1, (now - ft.startedAt) / 1800));
+          const sx = space === "world" ? toScreenX(ft.x) : Math.round(lobbyOx + ft.x * TILE);
+          const sy =
+            (space === "world" ? toScreenY(ft.y) : Math.round(lobbyOy + ft.y * TILE)) -
+            age * TILE * 1.15;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, 1 - age * age);
+          ctx.font = "800 13px sans-serif";
+          ctx.textAlign = "center";
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = "rgba(8,12,20,0.88)";
+          ctx.strokeText(ft.text, sx, sy);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, sx, sy);
+          ctx.restore();
         }
       }
       if (space === "world") drawParticles(true);
@@ -5960,138 +6877,157 @@ export default function WorldBoxClient() {
         }
       }
 
-      if (space === "world" && showMapRef.current && now - lastMinimapAt > 200) {
+      if (showMapRef.current && now - lastMinimapAt > 180) {
         lastMinimapAt = now;
         const mm = minimapRef.current;
         const mctx = mm?.getContext("2d");
         if (mm && mctx) {
-          const ox = Math.floor(player.x) - MINIMAP_TILES / 2;
-          const oy = Math.floor(player.y) - MINIMAP_TILES / 2;
-          const toMapX = (wx: number) => (wx - ox) * MINIMAP_SCALE;
-          const toMapY = (wy: number) => (wy - oy) * MINIMAP_SCALE;
-          paintLocalTerrain(miniTerrainCanvas, ox, oy, MINIMAP_TILES);
-          mctx.clearRect(0, 0, mm.width, mm.height);
-          mctx.imageSmoothingEnabled = false;
-          mctx.drawImage(miniTerrainCanvas, 0, 0, mm.width, mm.height);
-          mctx.imageSmoothingEnabled = true;
-          for (const n of nationsRef.current.nations) {
-            const mx = toMapX(n.capital.x);
-            const my = toMapY(n.capital.y);
-            if (mx < -4 || my < -4 || mx > mm.width + 4 || my > mm.height + 4) continue;
-            mctx.fillStyle = n.color;
-            mctx.fillRect(mx - 1, my - 1, 3, 3);
-          }
-          mctx.fillStyle = "#ffffff";
-          for (const o of others.values()) {
-            mctx.fillRect(
-              Math.floor(toMapX(o.track.rx)) - 1,
-              Math.floor(toMapY(o.track.ry)) - 1,
-              2,
-              2,
-            );
-          }
-          mctx.fillStyle = "#ffd23e";
-          mctx.strokeStyle = "rgba(0,0,0,0.6)";
-          mctx.beginPath();
-          mctx.arc(toMapX(player.x), toMapY(player.y), 2.6, 0, Math.PI * 2);
-          mctx.fill();
-          mctx.stroke();
-          if (invRef.current && countItem(invRef.current, "explorer_compass") > 0) {
-            if (
-              !compassCache ||
-              Math.hypot(player.x - compassCache.ax, player.y - compassCache.ay) >= 16
-            ) {
-              const near = nearestEntrances(MAP_SEED, player.x, player.y);
-              compassCache = { ax: player.x, ay: player.y, cave: near.cave, dungeon: near.dungeon };
-            }
-            drawCompassOnMinimap(
+          if (space !== "world") {
+            const indoorPlayers = [...others.values()].map((o) => ({
+              id: o.track.entry.id,
+              name: o.track.entry.name || "プレイヤー",
+              x: o.track.rx,
+              y: o.track.ry,
+              space,
+            }));
+            paintIndoorMapCanvas(
               mctx,
-              compassCache.cave,
-              COMPASS_CAVE_COLOR,
-              ox,
-              oy,
+              mm.width,
+              mm.height,
+              indoorData(),
               player.x,
               player.y,
+              indoorPlayers,
+              space,
+              mapPinsRef.current,
+              trackedTargetRef.current,
+              false,
             );
-            drawCompassOnMinimap(
-              mctx,
-              compassCache.dungeon,
-              COMPASS_DUNGEON_COLOR,
-              ox,
-              oy,
-              player.x,
-              player.y,
-            );
-            updateCompassHud(
-              compassCaveArrowRef.current,
-              compassCaveDistRef.current,
-              compassCache.cave,
-              player.x,
-              player.y,
-            );
-            updateCompassHud(
-              compassDungeonArrowRef.current,
-              compassDungeonDistRef.current,
-              compassCache.dungeon,
-              player.x,
-              player.y,
-            );
-          }
-        }
-      }
+          } else {
+            const ox = Math.floor(player.x) - MINIMAP_TILES / 2;
+            const oy = Math.floor(player.y) - MINIMAP_TILES / 2;
+            const toMapX = (wx: number) => (wx - ox) * MINIMAP_SCALE;
+            const toMapY = (wy: number) => (wy - oy) * MINIMAP_SCALE;
+            paintLocalTerrain(miniTerrainCanvas, ox, oy, MINIMAP_TILES);
+            mctx.clearRect(0, 0, mm.width, mm.height);
+            mctx.imageSmoothingEnabled = false;
+            mctx.drawImage(miniTerrainCanvas, 0, 0, mm.width, mm.height);
+            mctx.imageSmoothingEnabled = true;
 
-      if (space === "world" && mapViewRef.current && now - lastBigMapAt > 200) {
-        lastBigMapAt = now;
-        const bm = bigMapRef.current;
-        const bctx = bm?.getContext("2d");
-        if (bm && bctx) {
-          const ox = Math.floor(player.x) - BIGMAP_TILES / 2;
-          const oy = Math.floor(player.y) - BIGMAP_TILES / 2;
-          const toMapX = (wx: number) => (wx - ox) * BIGMAP_SCALE;
-          const toMapY = (wy: number) => (wy - oy) * BIGMAP_SCALE;
-          paintLocalTerrain(bigTerrainCanvas, ox, oy, BIGMAP_TILES);
-          bctx.clearRect(0, 0, bm.width, bm.height);
-          bctx.imageSmoothingEnabled = false;
-          bctx.drawImage(bigTerrainCanvas, 0, 0, bm.width, bm.height);
-          bctx.imageSmoothingEnabled = true;
-          for (const n of nationsRef.current.nations) {
-            const mx = toMapX(n.capital.x);
-            const my = toMapY(n.capital.y);
-            if (mx < -8 || my < -8 || mx > bm.width + 8 || my > bm.height + 8) continue;
-            bctx.fillStyle = n.color;
-            bctx.strokeStyle = "rgba(255,255,255,0.85)";
-            bctx.fillRect(mx - 3, my - 3, 7, 7);
-            bctx.strokeRect(mx - 3, my - 3, 7, 7);
-          }
-          const porter = porterRef.current;
-          if (porter) {
-            const mx = toMapX(porter.x + 0.5);
-            const my = toMapY(porter.y + 0.5);
-            if (mx >= -8 && my >= -8 && mx <= bm.width + 8 && my <= bm.height + 8) {
-              bctx.fillStyle = "#ffd23e";
-              bctx.strokeStyle = "rgba(255,255,255,0.9)";
-              bctx.beginPath();
-              bctx.moveTo(mx, my - 6);
-              bctx.lineTo(mx + 6, my);
-              bctx.lineTo(mx, my + 6);
-              bctx.lineTo(mx - 6, my);
-              bctx.closePath();
-              bctx.fill();
-              bctx.stroke();
+            for (const stl of settlementsNear(player.x, player.y, 96)) {
+              const mx = toMapX(stl.cx);
+              const my = toMapY(stl.cy);
+              const rPx = Math.max(4, stl.radius * MINIMAP_SCALE * 0.72);
+              mctx.fillStyle =
+                stl.tier === "city"
+                  ? "rgba(56, 189, 248, 0.25)"
+                  : stl.tier === "town"
+                    ? "rgba(251, 191, 36, 0.22)"
+                    : "rgba(167, 139, 250, 0.2)";
+              mctx.beginPath();
+              mctx.arc(mx, my, rPx, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.fillStyle = stl.tier === "city" ? "#38bdf8" : "#fbbf24";
+              mctx.fillRect(mx - 2, my - 2, 4, 4);
+            }
+
+            for (const n of nationsRef.current.nations) {
+              const mx = toMapX(n.capital.x);
+              const my = toMapY(n.capital.y);
+              if (mx < -4 || my < -4 || mx > mm.width + 4 || my > mm.height + 4) continue;
+              mctx.fillStyle = n.color;
+              mctx.fillRect(mx - 1.5, my - 1.5, 3.5, 3.5);
+            }
+
+            for (const pin of mapPinsRef.current) {
+              if (pin.space !== "world") continue;
+              const px = toMapX(pin.x);
+              const py = toMapY(pin.y);
+              if (px < -4 || py < -4 || px > mm.width + 4 || py > mm.height + 4) continue;
+              mctx.fillStyle = pin.color;
+              mctx.strokeStyle = "#ffffff";
+              mctx.lineWidth = 1.2;
+              mctx.beginPath();
+              mctx.arc(px, py, 3, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.stroke();
+            }
+
+            const tr = trackedTargetRef.current;
+            for (const o of others.values()) {
+              const omx = Math.floor(toMapX(o.track.rx));
+              const omy = Math.floor(toMapY(o.track.ry));
+              mctx.fillStyle =
+                tr?.kind === "player" && tr.presenceId === o.track.entry.id ? "#38bdf8" : "#ffffff";
+              mctx.fillRect(omx - 1, omy - 1, 2.5, 2.5);
+            }
+
+            if (tr) {
+              let tPos: { x: number; y: number } | null = null;
+              if (tr.kind === "player") {
+                const targetObj = others.get(tr.presenceId);
+                if (targetObj) tPos = { x: targetObj.track.rx, y: targetObj.track.ry };
+              } else if (tr.space === "world") {
+                tPos = { x: tr.x + 0.5, y: tr.y + 0.5 };
+              }
+              if (tPos) {
+                drawCompassOnMinimap(mctx, tPos, "#38bdf8", ox, oy, player.x, player.y);
+              }
+            }
+
+            mctx.fillStyle = "#ffd23e";
+            mctx.strokeStyle = "rgba(0,0,0,0.6)";
+            mctx.beginPath();
+            mctx.arc(toMapX(player.x), toMapY(player.y), 2.8, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.stroke();
+            if (invRef.current && countItem(invRef.current, "explorer_compass") > 0) {
+              if (
+                !compassCache ||
+                Math.hypot(player.x - compassCache.ax, player.y - compassCache.ay) >= 16
+              ) {
+                const near = nearestEntrances(MAP_SEED, player.x, player.y);
+                compassCache = {
+                  ax: player.x,
+                  ay: player.y,
+                  cave: near.cave,
+                  dungeon: near.dungeon,
+                };
+              }
+              drawCompassOnMinimap(
+                mctx,
+                compassCache.cave,
+                COMPASS_CAVE_COLOR,
+                ox,
+                oy,
+                player.x,
+                player.y,
+              );
+              drawCompassOnMinimap(
+                mctx,
+                compassCache.dungeon,
+                COMPASS_DUNGEON_COLOR,
+                ox,
+                oy,
+                player.x,
+                player.y,
+              );
+              updateCompassHud(
+                compassCaveArrowRef.current,
+                compassCaveDistRef.current,
+                compassCache.cave,
+                player.x,
+                player.y,
+              );
+              updateCompassHud(
+                compassDungeonArrowRef.current,
+                compassDungeonDistRef.current,
+                compassCache.dungeon,
+                player.x,
+                player.y,
+              );
             }
           }
-          bctx.fillStyle = "#ffffff";
-          for (const o of others.values()) {
-            bctx.beginPath();
-            bctx.arc(toMapX(o.track.rx), toMapY(o.track.ry), 2.6, 0, Math.PI * 2);
-            bctx.fill();
-          }
-          bctx.fillStyle = "#ffd23e";
-          bctx.strokeStyle = "rgba(0,0,0,0.65)";
-          bctx.beginPath();
-          bctx.arc(toMapX(player.x), toMapY(player.y), 4.4, 0, Math.PI * 2);
-          bctx.fill();
-          bctx.stroke();
         }
       }
     };
@@ -6305,7 +7241,7 @@ export default function WorldBoxClient() {
     {
       id: "map",
       label: showMap ? "マップを隠す" : "マップを出す",
-      show: spaceUi === "world",
+      show: true,
       run: () => setShowMap((v) => !v),
     },
     {
@@ -6348,6 +7284,27 @@ export default function WorldBoxClient() {
       run: () => setJobOpen((v) => !v),
     },
     {
+      id: "trade",
+      label: tradeOpen ? "P2P取引・契約を閉じる" : "P2P取引・契約",
+      show: true,
+      run: () => {
+        setTradeTarget(null);
+        setTradeOpen((v) => !v);
+      },
+    },
+    {
+      id: "realestate",
+      label: realEstateOpen ? "不動産・マンションを閉じる" : "不動産・マンション",
+      show: true,
+      run: () => setRealEstateOpen((v) => !v),
+    },
+    {
+      id: "governance",
+      label: governanceOpen ? "市政庁・裁判所を閉じる" : "市政庁・裁判所",
+      show: true,
+      run: () => setGovernanceOpen((v) => !v),
+    },
+    {
       id: "engineering",
       label: engineeringOpen ? "機械制作ラボを閉じる" : "機械制作・図鑑",
       show: true,
@@ -6361,14 +7318,14 @@ export default function WorldBoxClient() {
     },
     {
       id: "metro",
-      label: metroOpen ? "デイリー任務を閉じる" : "デイリー任務・速報",
+      label: metroOpen ? "METRO OSを閉じる" : "METRO OS (SNS・車両)",
       show: true,
       run: () => setMetroOpen((v) => !v),
     },
     {
       id: "mapview",
       label: mapView ? "マップを閉じる" : "マップを見る",
-      show: spaceUi === "world",
+      show: true,
       run: () => setMapView((v) => !v),
     },
     { id: "close", label: "閉じる", show: true, run: () => {} },
@@ -6539,6 +7496,12 @@ export default function WorldBoxClient() {
           {othersCount > 0 ? ` ・ いま ${othersCount} 人が歩いている` : ""}
           {spaceUi === "lobby" ? ` ・ ${lobbyDistrictAt(coords.x, coords.y)}` : ""}
           {spaceUi === "prison" ? ` ・ ${prisonDistrictAt(coords.x, coords.y)}` : ""}
+          {spaceUi === "world"
+            ? (() => {
+                const nearStl = nearestSettlement(coords.x, coords.y, 26);
+                return nearStl ? ` ・ ${nearStl.name} (${nearStl.population}人)` : "";
+              })()
+            : ""}
           {` ・ 座標 X ${coords.x} / Y ${coords.y}`}
         </div>
         {mmoFeedText && (
@@ -6561,11 +7524,15 @@ export default function WorldBoxClient() {
         {mmoSummary?.prison.jailed && (
           <div
             className="wb-mmo-prison-banner"
-            style={{ top: "calc(74px + env(safe-area-inset-top, 0px))" }}
+            style={{
+              top: trackedTarget
+                ? "calc(78px + env(safe-area-inset-top, 0px))"
+                : "calc(42px + env(safe-area-inset-top, 0px))",
+            }}
           >
-            <span>
-              🔒 収監中 ({mmoSummary.prison.cellId}) ・ 残刑期{" "}
-              {Math.max(0, Math.ceil(mmoSummary.prison.remainingMs / 1000))}秒
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <WbIcon name="lock" size={13} color="#fca5a5" /> 収監中 ({mmoSummary.prison.cellId})
+              ・ 残刑期 {Math.max(0, Math.ceil(mmoSummary.prison.remainingMs / 1000))}秒
             </span>
             <button
               type="button"
@@ -6577,58 +7544,67 @@ export default function WorldBoxClient() {
             </button>
           </div>
         )}
-        {!menuOpen && (
-          <div className="wb-mmo-dock">
+        {trackedTarget && (
+          <div className="wb-mmo-waypoint" role="status">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <WbIcon
+                name={trackedTarget.kind === "player" ? "target" : "compass"}
+                size={13}
+                color="#38bdf8"
+              />
+              {trackedTarget.kind === "player" ? "追跡中:" : "目的地:"} {trackedTarget.label}
+            </span>
+            <span
+              ref={trackedDistElRef}
+              style={{ fontVariantNumeric: "tabular-nums", color: "#38bdf8", fontWeight: 800 }}
+            >
+              --m
+            </span>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>
+              (
+              {trackedTarget.kind === "player"
+                ? "リアルタイム"
+                : trackedTarget.space === "world"
+                  ? "ワールド"
+                  : trackedTarget.space === "prison"
+                    ? "刑務所"
+                    : trackedTarget.space === "lobby2"
+                      ? "ロビー2F"
+                      : trackedTarget.space === "lobby3"
+                        ? "ロビー3F"
+                        : parseInteriorSpace(trackedTarget.space)
+                          ? "店舗・屋内"
+                          : "ロビー"}
+              )
+            </span>
             <button
               type="button"
-              className={`wb-mmo-dock-btn ${jobOpen ? "is-active" : ""}`}
-              onClick={() => setJobOpen((v) => !v)}
+              className="wb-mmo-waypoint-btn"
+              onClick={() => setMapView(true)}
+              style={{ borderColor: "rgba(56,189,248,0.45)", color: "#e0f2fe" }}
             >
-              <span>💼</span>
-              <span>仕事</span>
-              {mmoSummary?.career && (
-                <span
-                  className="wb-mmo-pill"
-                  style={{ background: "rgba(16,185,129,0.25)", color: "#6ee7b7" }}
-                >
-                  Lv.{mmoSummary.career.level}
-                </span>
-              )}
+              地図
             </button>
+            {trackedTarget.kind === "pin" && trackedTarget.pinId && (
+              <button
+                type="button"
+                className="wb-mmo-waypoint-btn"
+                onClick={() => deleteMapPin(trackedTarget.pinId!)}
+                style={{
+                  background: "rgba(220,38,38,0.35)",
+                  borderColor: "#f87171",
+                  color: "#fecaca",
+                }}
+              >
+                ピン削除
+              </button>
+            )}
             <button
               type="button"
-              className={`wb-mmo-dock-btn ${engineeringOpen ? "is-active" : ""}`}
-              onClick={() => setEngineeringOpen((v) => !v)}
+              className="wb-mmo-waypoint-btn"
+              onClick={() => setTrackedTarget(null)}
             >
-              <span>⚙️</span>
-              <span>機械制作</span>
-            </button>
-            <button
-              type="button"
-              className={`wb-mmo-dock-btn ${
-                mmoSummary?.prison.jailed || (mmoSummary?.prison.wantedLevel ?? 0) > 0
-                  ? "is-danger"
-                  : prisonOpen
-                    ? "is-active"
-                    : ""
-              }`}
-              onClick={() => setPrisonOpen((v) => !v)}
-            >
-              <span>⚖️</span>
-              <span>警察・刑務所</span>
-              {mmoSummary && mmoSummary.prison.wantedLevel > 0 && (
-                <span className="wb-mmo-pill" style={{ background: "#ef4444", color: "#fff" }}>
-                  ★{mmoSummary.prison.wantedLevel}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              className={`wb-mmo-dock-btn ${metroOpen ? "is-active" : ""}`}
-              onClick={() => setMetroOpen((v) => !v)}
-            >
-              <span>📱</span>
-              <span>任務・速報</span>
+              案内終了
             </button>
           </div>
         )}
@@ -6897,14 +7873,50 @@ export default function WorldBoxClient() {
                 開く
               </button>
             )}
-            {stationUi === "bank" && (
+            {stationUi === "shop" && stationGenre === "food" && (
               <button
                 type="button"
-                style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
-                onClick={() => setFinanceOpen((v) => !v)}
+                style={{
+                  ...btn,
+                  minHeight: hud.buttonMinHeight,
+                  padding: "2px 10px",
+                  background: "#d97706",
+                  borderColor: "#fbbf24",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+                onClick={() => setJobOpen(true)}
               >
-                {financeOpen ? "閉じる" : "FX・予測・LP"}
+                <WbIcon name="cafe" size={13} color="#fef3c7" /> カフェ運営
               </button>
+            )}
+            {stationUi === "bank" && (
+              <>
+                <button
+                  type="button"
+                  style={{ ...btn, minHeight: hud.buttonMinHeight, padding: "2px 10px" }}
+                  onClick={() => setFinanceOpen((v) => !v)}
+                >
+                  {financeOpen ? "閉じる" : "FX・予測・LP"}
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...btn,
+                    minHeight: hud.buttonMinHeight,
+                    padding: "2px 10px",
+                    background: "#991b1b",
+                    borderColor: "#f87171",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                  onClick={() => setPrisonOpen(true)}
+                >
+                  <WbIcon name="keyhole" size={13} color="#fecaca" /> 金庫/工作
+                </button>
+              </>
             )}
             {stationUi === "sell" && (
               <button
@@ -7009,6 +8021,25 @@ export default function WorldBoxClient() {
                 {engineeringOpen ? "ラボ閉じる" : "機械制作ラボ"}
               </button>
             )}
+            {stationUi === "dealer" && (
+              <button
+                type="button"
+                style={{
+                  ...btn,
+                  minHeight: hud.buttonMinHeight,
+                  padding: "2px 10px",
+                  background: "#0284c7",
+                  borderColor: "#38bdf8",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+                onClick={() => setDealerOpen((v) => !v)}
+              >
+                <WbIcon name="car" size={13} color="#e0f2fe" />{" "}
+                {dealerOpen ? "閉じる" : "ディーラーを開く"}
+              </button>
+            )}
             {(stationUi === "prison_work" ||
               stationUi === "prison_desk" ||
               stationUi === "prison_escape" ||
@@ -7036,24 +8067,140 @@ export default function WorldBoxClient() {
             {plazaMsg && <span role="status">{plazaMsg}</span>}
           </div>
         )}
-        {showMap && spaceUi === "world" && (
-          <canvas
-            ref={minimapRef}
-            width={MINIMAP_PX}
-            height={MINIMAP_PX}
-            aria-label="周辺マップ"
+        {!stationUi && spaceUi === "world" && doorPrompt && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(68px + env(safe-area-inset-bottom, 0px))",
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              padding: "6px 8px 6px 14px",
+              borderRadius: 10,
+              background: "rgba(11,16,26,0.88)",
+              border: "1px solid rgba(56,189,248,0.45)",
+              color: "#fff",
+              fontSize: 13,
+              whiteSpace: "nowrap",
+              zIndex: 4,
+            }}
+          >
+            <span>
+              {doorPrompt.settlementName} ・ {doorPrompt.building.label}
+            </span>
+            <button
+              type="button"
+              style={{
+                ...btn,
+                minHeight: hud.buttonMinHeight,
+                padding: "2px 12px",
+                background: "#0284c7",
+                borderColor: "#38bdf8",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+              onClick={() => {
+                lastWorldDoorReturnRef.current = {
+                  space: doorPrompt.interiorSpace,
+                  x: doorPrompt.building.porchX + 0.5,
+                  y: doorPrompt.building.porchY + 0.5,
+                };
+                instanceWarpRef.current?.(doorPrompt.interiorSpace, { x: 10, y: 11.6 });
+              }}
+            >
+              <WbIcon name="door" size={13} color="#e0f2fe" /> 入店する
+            </button>
+          </div>
+        )}
+        {!stationUi && parseInteriorSpace(spaceUi) !== null && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              padding: "6px 8px 6px 14px",
+              borderRadius: 10,
+              background: "rgba(11,16,26,0.82)",
+              border: "1px solid rgba(74,222,128,0.4)",
+              color: "#fff",
+              fontSize: 12.5,
+              whiteSpace: "nowrap",
+              zIndex: 4,
+            }}
+          >
+            <span>店舗内（南のEXITマットまたはボタンで外へ）</span>
+            <button
+              type="button"
+              style={{
+                ...btn,
+                minHeight: hud.buttonMinHeight,
+                padding: "2px 10px",
+                background: "#15803d",
+                borderColor: "#4ade80",
+              }}
+              onClick={() => warpActionRef.current("world")}
+            >
+              外へ出る
+            </button>
+          </div>
+        )}
+        {showMap && (
+          <div
             style={{
               position: "absolute",
               right: "calc(10px + env(safe-area-inset-right, 0px))",
               top: "calc(10px + env(safe-area-inset-top, 0px))",
               width: hud.minimapPx,
               height: hud.minimapPx,
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.35)",
-              background: "rgba(0,0,0,0.25)",
-              pointerEvents: "none",
+              zIndex: 6,
             }}
-          />
+          >
+            <canvas
+              ref={minimapRef}
+              width={MINIMAP_PX}
+              height={MINIMAP_PX}
+              aria-label="周辺マップ"
+              onClick={() => {
+                playWbSe("open");
+                setMapView((v) => !v);
+              }}
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.38)",
+                background: "rgba(9,13,22,0.45)",
+                cursor: "pointer",
+                pointerEvents: "auto",
+                display: "block",
+              }}
+            />
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                right: 4,
+                bottom: 4,
+                padding: "1px 5px",
+                borderRadius: 5,
+                background: "rgba(10, 14, 24, 0.85)",
+                border: "1px solid rgba(56, 189, 248, 0.45)",
+                color: "#e2e8f0",
+                fontSize: 9.5,
+                fontWeight: 800,
+                pointerEvents: "none",
+              }}
+            >
+              M
+            </span>
+          </div>
         )}
         {showMap && spaceUi === "world" && hasCompass && (
           <div
@@ -7471,6 +8618,38 @@ export default function WorldBoxClient() {
             )}
             <button
               type="button"
+              style={{ ...btn, background: "#0369a1", borderColor: "#38bdf8" }}
+              onClick={() => {
+                setTrackedTarget({
+                  kind: "player",
+                  presenceId: playerCard.id,
+                  label: playerCard.name,
+                  color: "#38bdf8",
+                });
+                pushFloatText(
+                  playerPosRef.current.x,
+                  playerPosRef.current.y - 0.8,
+                  `追跡: ${playerCard.name}`,
+                  "#38bdf8",
+                );
+                setPlayerCard(null);
+              }}
+            >
+              追跡
+            </button>
+            <button
+              type="button"
+              style={{ ...btn, background: "#0284c7", borderColor: "#38bdf8" }}
+              onClick={() => {
+                setTradeTarget({ presenceId: playerCard.id, name: playerCard.name });
+                setTradeOpen(true);
+                setPlayerCard(null);
+              }}
+            >
+              取引
+            </button>
+            <button
+              type="button"
               style={{ ...btn, background: "#0891b2", borderColor: "#22d3ee" }}
               onClick={() => {
                 void fetch("/api/worldbox/prison", {
@@ -7493,7 +8672,9 @@ export default function WorldBoxClient() {
                     setTileMsg(
                       d.error === "not_wanted"
                         ? "指名手配中の相手ではありません"
-                        : "逮捕できませんでした",
+                        : d.error === "target_too_far"
+                          ? "もう少し近づいてから逮捕してください"
+                          : "逮捕できませんでした",
                     );
                   }
                 });
@@ -8130,7 +9311,7 @@ export default function WorldBoxClient() {
           </div>
         )}
 
-        {boardOpen && spaceUi === "lobby" && (
+        {boardOpen && (spaceUi === "lobby" || Boolean(parseInteriorSpace(spaceUi))) && (
           <div style={panelOverlay} className="wb-panel">
             <div style={{ ...stickyPanelHead, display: "flex", alignItems: "center", gap: 10 }}>
               <strong>グローバル掲示板</strong>
@@ -8206,63 +9387,25 @@ export default function WorldBoxClient() {
         )}
 
         {mapView && (
-          <div style={panelOverlay} className="wb-panel">
-            <div
-              style={{
-                ...stickyPanelHead,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <strong>マップ</strong>
-              <span className="muted">
-                あなたの座標 X {coords.x} / Y {coords.y}
-              </span>
-              {porterUi && (
-                <button type="button" style={btn} onClick={() => void teleportToPorter()}>
-                  ポーター X {porterUi.x} / Y {porterUi.y}
-                </button>
-              )}
-              <span style={{ flex: 1 }} />
-              <button type="button" style={btn} onClick={() => setMapView(false)}>
-                閉じる
-              </button>
-            </div>
-            <canvas
-              ref={bigMapRef}
-              width={BIGMAP_SIZE}
-              height={BIGMAP_SIZE}
-              aria-label="周辺マップ（大きく表示）"
-              onClick={(e) => {
-                const porter = porterUi;
-                if (!porter) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                if (rect.width <= 0) return;
-                const px = (e.clientX - rect.left) * (BIGMAP_SIZE / rect.width);
-                const py = (e.clientY - rect.top) * (BIGMAP_SIZE / rect.width);
-                const pos = playerPosRef.current;
-                const wx = Math.floor(pos.x) - BIGMAP_TILES / 2 + px / BIGMAP_SCALE;
-                const wy = Math.floor(pos.y) - BIGMAP_TILES / 2 + py / BIGMAP_SCALE;
-                if (
-                  Math.max(Math.abs(wx - (porter.x + 0.5)), Math.abs(wy - (porter.y + 0.5))) <= 3
-                ) {
-                  void teleportToPorter();
-                }
-              }}
-              style={{
-                width: layoutMode === "landscape" ? "min(100%, calc(100svh - 150px))" : "100%",
-                height: "auto",
-                display: "block",
-                marginTop: 10,
-                marginInline: "auto",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.35)",
-                background: "rgba(0,0,0,0.25)",
-              }}
-            />
-          </div>
+          <WorldBoxMapModal
+            getSnapshot={() => getMapSnapshotRef.current()}
+            pins={mapPins}
+            trackedTarget={trackedTarget}
+            onAddPin={addMapPin}
+            onDeletePin={deleteMapPin}
+            onTrackTarget={(target) => {
+              setTrackedTarget(target);
+              pushFloatText(
+                playerPosRef.current.x,
+                playerPosRef.current.y - 0.8,
+                target.kind === "player" ? `追跡: ${target.label}` : `案内: ${target.label}`,
+                "#38bdf8",
+              );
+            }}
+            onClearTrack={() => setTrackedTarget(null)}
+            onTeleportPorter={porterUi ? () => void teleportToPorter() : undefined}
+            onClose={() => setMapView(false)}
+          />
         )}
 
         {/* パネルの開閉は左上の ≡ メニューに統合（ボタン行は置かない） */}
@@ -8337,8 +9480,176 @@ export default function WorldBoxClient() {
         {racingOpen && spaceUi === "lobby" && (
           <WorldBoxRacingPanel onClose={() => setRacingOpen(false)} />
         )}
-        {stockOpen && spaceUi === "lobby" && (
+        {stockOpen && (spaceUi === "lobby" || Boolean(parseInteriorSpace(spaceUi))) && (
           <WorldBoxStockPanel onClose={() => setStockOpen(false)} />
+        )}
+        {dealerOpen && (
+          <WorldBoxDealerPanel
+            fallbackCoins={invProfile?.coins}
+            onProfileChange={(p) => setInvProfile(p)}
+            onVehicleChange={(v) => setEquippedVehicle(v)}
+            onStatusChange={() => void refreshMmoRef.current?.()}
+            onClose={() => setDealerOpen(false)}
+          />
+        )}
+        {npcDialog && (
+          <div
+            className="wb-panel"
+            role="dialog"
+            aria-label={npcDialog.name}
+            style={{ ...panelOverlay, width: "min(440px, calc(100vw - 24px))", zIndex: 26 }}
+          >
+            <div style={{ ...stickyPanelHead, display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: npcDialog.shirtColor,
+                  border: "1px solid #fff",
+                }}
+              />
+              <div>
+                <strong>{npcDialog.name}</strong>
+                <span style={{ marginLeft: 6, fontSize: 11, color: "#38bdf8" }}>
+                  [{npcDialog.roleLabel}]
+                </span>
+              </div>
+              <span style={{ flex: 1 }} />
+              <button type="button" style={btn} onClick={() => setNpcDialog(null)}>
+                閉じる
+              </button>
+            </div>
+            <div style={{ fontSize: 11.5, color: "#94a3b8", marginBottom: 8 }}>
+              {npcDialog.settlementName}（{npcDialog.biomeLabel}）・名産: {npcDialog.specialty} ・{" "}
+              {npcDialog.activity}
+            </div>
+            <div
+              className="wb-mmo-card"
+              style={{
+                background: "rgba(15, 23, 42, 0.72)",
+                borderColor: "rgba(56, 189, 248, 0.35)",
+                marginBottom: 10,
+                lineHeight: 1.5,
+              }}
+            >
+              {npcDialog.phrases[0] ?? `${npcDialog.settlementName}へようこそ！`}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {npcDialog.buildingKind === "vehicle_dealer" && (
+                <button
+                  type="button"
+                  className="wb-mmo-btn wb-mmo-btn-cyan"
+                  onClick={() => {
+                    const intrTarget = npcDialog.interiorSpace;
+                    const doorRet = npcDialog.doorReturn;
+                    setNpcDialog(null);
+                    if (spaceUi === intrTarget) {
+                      setDealerOpen(true);
+                    } else if (intrTarget) {
+                      if (doorRet)
+                        lastWorldDoorReturnRef.current = {
+                          space: intrTarget,
+                          x: doorRet.x,
+                          y: doorRet.y,
+                        };
+                      instanceWarpRef.current?.(intrTarget, { x: 10, y: 11.6 });
+                    }
+                  }}
+                >
+                  <WbIcon name="car" size={13} color="#e0f2fe" />{" "}
+                  {spaceUi === npcDialog.interiorSpace
+                    ? "車両カタログを開く"
+                    : "ディーラー店内に入る"}
+                </button>
+              )}
+              {npcDialog.buildingKind &&
+                npcDialog.buildingKind !== "vehicle_dealer" &&
+                npcDialog.interiorSpace && (
+                  <button
+                    type="button"
+                    className="wb-mmo-btn wb-mmo-btn-cyan"
+                    onClick={() => {
+                      const kind = npcDialog.buildingKind;
+                      const intrTarget = npcDialog.interiorSpace!;
+                      const doorRet = npcDialog.doorReturn;
+                      setNpcDialog(null);
+                      if (spaceUi === intrTarget) {
+                        if (
+                          kind === "cafe" ||
+                          kind === "convenience" ||
+                          kind === "smith_workshop"
+                        ) {
+                          setShowEconomy(true);
+                        } else if (kind === "bank_kiosk") {
+                          setFinanceOpen(true);
+                        } else if (kind === "city_hall") {
+                          setBoardOpen(true);
+                        }
+                      } else {
+                        if (doorRet) {
+                          lastWorldDoorReturnRef.current = {
+                            space: intrTarget,
+                            x: doorRet.x,
+                            y: doorRet.y,
+                          };
+                        }
+                        instanceWarpRef.current?.(intrTarget, { x: 10, y: 11.6 });
+                      }
+                    }}
+                  >
+                    <WbIcon name="door" size={13} color="#e0f2fe" />{" "}
+                    {spaceUi === npcDialog.interiorSpace
+                      ? `${npcDialog.buildingLabel ?? "店舗"}の窓口を開く`
+                      : `${npcDialog.buildingLabel ?? "建物"}に入る`}
+                  </button>
+                )}
+              {npcDialog.role === "guard" && (
+                <button
+                  type="button"
+                  className="wb-mmo-btn wb-mmo-btn-amber"
+                  onClick={() => {
+                    setNpcDialog(null);
+                    setPrisonOpen(true);
+                  }}
+                >
+                  <WbIcon name="shield" size={13} color="#fef3c7" /> 警察・懸賞手配を見る
+                </button>
+              )}
+              {(npcDialog.role === "barista" || npcDialog.role === "merchant") && (
+                <button
+                  type="button"
+                  className="wb-mmo-btn"
+                  style={{ background: "rgba(255,255,255,0.1)", color: "#f8fafc" }}
+                  onClick={() => {
+                    setNpcDialog(null);
+                    setJobOpen(true);
+                  }}
+                >
+                  <WbIcon name="briefcase" size={13} color="#fde047" /> 街のお仕事 / 配達
+                </button>
+              )}
+              {npcDialog.cx !== undefined && npcDialog.cy !== undefined && spaceUi === "world" && (
+                <button
+                  type="button"
+                  className="wb-mmo-btn"
+                  style={{ background: "rgba(255,255,255,0.1)", color: "#f8fafc" }}
+                  onClick={() => {
+                    setWaypoint({
+                      space: "world",
+                      x: npcDialog.cx!,
+                      y: npcDialog.cy!,
+                      label: npcDialog.settlementName,
+                    });
+                    setNpcDialog(null);
+                  }}
+                >
+                  <WbIcon name="compass" size={13} color="#38bdf8" /> この街中心を追跡
+                </button>
+              )}
+            </div>
+          </div>
         )}
         {marketOpen && <WorldBoxMarketPanel onClose={() => setMarketOpen(false)} />}
         {financeOpen && <WorldBoxFinancePanel onClose={() => setFinanceOpen(false)} />}
@@ -8407,6 +9718,7 @@ export default function WorldBoxClient() {
           <WorldBoxJobPanel
             onProfileChange={(p) => setInvProfile(p)}
             onStatusChange={() => void refreshMmoRef.current?.()}
+            onSetWaypoint={(wp) => setWaypoint(wp)}
             onClose={() => setJobOpen(false)}
           />
         )}
@@ -8419,6 +9731,7 @@ export default function WorldBoxClient() {
             }}
             onProfileChange={(p) => setInvProfile(p)}
             onStatusChange={() => void refreshMmoRef.current?.()}
+            onSetWaypoint={(wp) => setWaypoint(wp)}
             onClose={() => setPrisonOpen(false)}
           />
         )}
@@ -8432,8 +9745,14 @@ export default function WorldBoxClient() {
           <WorldBoxMetroPanel
             onProfileChange={(p) => setInvProfile(p)}
             onStatusChange={() => void refreshMmoRef.current?.()}
+            onVehicleChange={(v) => setEquippedVehicle(v)}
             onOpenPanel={(p) => {
               if (p === "jobs") setJobOpen(true);
+              else if (p === "trade") {
+                setTradeTarget(null);
+                setTradeOpen(true);
+              } else if (p === "realestate") setRealEstateOpen(true);
+              else if (p === "governance") setGovernanceOpen(true);
               else if (p === "engineering") setEngineeringOpen(true);
               else if (p === "prison") setPrisonOpen(true);
               else if (p === "market") setMarketOpen(true);
@@ -8442,6 +9761,34 @@ export default function WorldBoxClient() {
               else if (p === "economy") setShowEconomy(true);
             }}
             onClose={() => setMetroOpen(false)}
+          />
+        )}
+        {tradeOpen && (
+          <WorldBoxTradePanel
+            initialTarget={tradeTarget}
+            profile={invProfile}
+            onProfileChange={(p) => setInvProfile(p)}
+            onStatusChange={() => void refreshMmoRef.current?.()}
+            onClose={() => {
+              setTradeOpen(false);
+              setTradeTarget(null);
+            }}
+          />
+        )}
+        {realEstateOpen && (
+          <WorldBoxRealEstatePanel
+            onForceMove={(mv) => {
+              forceMoveRef.current?.(mv);
+            }}
+            onStatusChange={() => void refreshMmoRef.current?.()}
+            onClose={() => setRealEstateOpen(false)}
+          />
+        )}
+        {governanceOpen && (
+          <WorldBoxGovernancePanel
+            jailed={Boolean(mmoSummary?.prison.jailed)}
+            onStatusChange={() => void refreshMmoRef.current?.()}
+            onClose={() => setGovernanceOpen(false)}
           />
         )}
         {guildShopOpen && spaceUi === "lobby" && (

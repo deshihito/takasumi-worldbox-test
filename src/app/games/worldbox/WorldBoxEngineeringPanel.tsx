@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import { itemById, type ItemDef } from "@/lib/worldbox/economy/items";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import {
@@ -22,7 +23,7 @@ const overlayStyle: CSSProperties = {
   maxHeight: "min(86svh, 720px)",
   overflowY: "auto",
   borderRadius: 14,
-  padding: 16,
+  padding: "0 16px 16px",
   background: "rgba(13, 19, 28, 0.96)",
   border: "1px solid rgba(148, 163, 184, 0.28)",
   boxShadow: "0 20px 50px rgba(0,0,0,0.65)",
@@ -137,19 +138,25 @@ export default function WorldBoxEngineeringPanel({
     <div className="wb-panel" style={overlayStyle}>
       <div
         style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 2,
+          background: "rgba(13, 19, 28, 0.98)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           gap: 10,
           marginBottom: 10,
           borderBottom: "1px solid rgba(148,163,184,0.2)",
-          paddingBottom: 10,
+          padding: "14px 0 10px",
         }}
       >
         <div>
-          <strong style={{ fontSize: 16 }}>⚙️ 機械制作・メトロエンジニアラボ</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="gear" size={16} color="#38bdf8" /> 機械制作・メトロエンジニアラボ
+          </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
-            電子部品の加工・9種の自動産業マシン製造・特注カスタムマシン設計
+            電子部品の加工・10種の産業マシン・乗り物・特注マシン設計
           </div>
         </div>
         <button type="button" className="wb-mmo-btn" onClick={onClose}>
@@ -287,8 +294,9 @@ export default function WorldBoxEngineeringPanel({
       {tab === "custom" && data && (
         <div style={{ display: "grid", gap: 10 }}>
           <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 800 }}>
-              🔧 特注カスタムマシン設計図（ワールドに設置して稼働）
+            <div style={{ fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <WbIcon name="wrench" size={14} color="#38bdf8" />{" "}
+              特注カスタムマシン設計図（ワールドに設置して稼働）
             </div>
             <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
               <span>マシン愛称</span>

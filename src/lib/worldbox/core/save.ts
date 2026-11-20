@@ -18,6 +18,8 @@ function clampPos(v: number, max: number): number {
 }
 
 const SAVE_INSTANCE_SPACE_RE = /^(cave|ruins|dungeon):(-?\d+),(-?\d+):(\d+)$/;
+const SAVE_APARTMENT_SPACE_RE = /^apartment:[a-zA-Z0-9_-]{1,24}$/;
+const SAVE_INTERIOR_SPACE_RE = /^interior:(-?\d+),(-?\d+):([a-z0-9_]{1,20})$/;
 function instanceKindOf(space: string): string | null {
   const m = SAVE_INSTANCE_SPACE_RE.exec(space);
   return m ? m[1] : null;
@@ -33,7 +35,11 @@ function sanitizeSpace(raw: unknown): SaveSpace {
   ) {
     return raw;
   }
-  if (typeof raw === "string" && instanceKindOf(raw)) return raw;
+  if (
+    typeof raw === "string" &&
+    (instanceKindOf(raw) || SAVE_APARTMENT_SPACE_RE.test(raw) || SAVE_INTERIOR_SPACE_RE.test(raw))
+  )
+    return raw;
   return "world";
 }
 
@@ -43,6 +49,8 @@ function clampToSpace(space: SaveSpace, x: number, y: number): { x: number; y: n
   if (space === "lobby3") return { x: clampPos(x, 32), y: clampPos(y, 24) };
   if (space === "prison") return { x: clampPos(x, 44), y: clampPos(y, 32) };
   if (space === "tent") return { x: clampPos(x, TENT_MAX_W), y: clampPos(y, TENT_MAX_H) };
+  if (SAVE_APARTMENT_SPACE_RE.test(space)) return { x: clampPos(x, 24), y: clampPos(y, 18) };
+  if (SAVE_INTERIOR_SPACE_RE.test(space)) return { x: clampPos(x, 20), y: clampPos(y, 15) };
   if (instanceKindOf(space) === "cave") return { x: clampPos(x, 64), y: clampPos(y, 64) };
   if (instanceKindOf(space) === "ruins") return { x: clampPos(x, 48), y: clampPos(y, 48) };
   if (instanceKindOf(space) === "dungeon") return { x: clampPos(x, 52), y: clampPos(y, 52) };

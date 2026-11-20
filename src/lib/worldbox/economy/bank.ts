@@ -74,6 +74,7 @@ export function computeCreditLimit(
   account: BankAccount,
   stockCollateralValue: number,
   fxCollateralValue: number,
+  realEstateValue = 0,
 ): {
   totalCollateral: number;
   maxBorrowLimit: number;
@@ -84,7 +85,8 @@ export function computeCreditLimit(
   const totalCollateral =
     Math.max(0, account.deposit) +
     Math.max(0, stockCollateralValue) +
-    Math.max(0, fxCollateralValue);
+    Math.max(0, fxCollateralValue) +
+    Math.max(0, realEstateValue);
   const maxBorrowLimit = Math.floor(totalCollateral * BANK_LTV_RATIO);
   const currentDebt = totalBankDebt(account);
   const availableCredit = Math.max(0, maxBorrowLimit - currentDebt);
@@ -142,6 +144,7 @@ export function planBankWithdraw(
   stockCollateralValue: number,
   fxCollateralValue: number,
   now: number,
+  realEstateValue = 0,
 ):
   | { ok: true; state: BankState; amount: number }
   | { ok: false; error: "invalid_amount" | "insufficient_deposit" | "locked_as_collateral" } {
@@ -170,6 +173,7 @@ export function planBankWithdraw(
     { ...prev, deposit: afterDeposit },
     stockCollateralValue,
     fxCollateralValue,
+    realEstateValue,
   );
   if (creditAfter.currentDebt > creditAfter.maxBorrowLimit) {
     return { ok: false, error: "locked_as_collateral" };
@@ -194,6 +198,7 @@ export function planBankBorrow(
   stockCollateralValue: number,
   fxCollateralValue: number,
   now: number,
+  realEstateValue = 0,
 ):
   | { ok: true; state: BankState; amount: number }
   | { ok: false; error: "invalid_amount" | "exceeds_credit_limit" } {
@@ -215,7 +220,7 @@ export function planBankBorrow(
     state,
     now,
   );
-  const credit = computeCreditLimit(prev, stockCollateralValue, fxCollateralValue);
+  const credit = computeCreditLimit(prev, stockCollateralValue, fxCollateralValue, realEstateValue);
   if (amountRaw > credit.availableCredit) {
     return { ok: false, error: "exceeds_credit_limit" };
   }

@@ -98,8 +98,8 @@ test("種別: 織りレシピ（繊維→糸・布）がある", () => {
   assert.deepEqual({ ...string.inputs }, { fiber: 2 });
 });
 
-test("種別: レシピ総数は 183", () => {
-  assert.equal(E.RECIPES.length, 183);
+test("種別: レシピ総数は 188", () => {
+  assert.equal(E.RECIPES.length, 188);
   const kinds = { craft: 0, smelt: 0, cook: 0, weave: 0 };
   for (const r of E.RECIPES) kinds[E.recipeKind(r)] += 1;
   assert.equal(kinds.smelt, 4);

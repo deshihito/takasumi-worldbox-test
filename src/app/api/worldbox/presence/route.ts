@@ -87,6 +87,7 @@ export async function PUT(request: Request) {
   const isCave = /^cave:-?\d+,-?\d+:\d+$/.test(space);
   const isRuins = /^ruins:-?\d+,-?\d+:\d+$/.test(space);
   const isDungeon = /^dungeon:-?\d+,-?\d+:\d+$/.test(space);
+  const isApartment = /^apartment:[a-zA-Z0-9_-]{1,24}$/.test(space);
   const bounds =
     space === "lobby"
       ? rectBounds(LOBBY_W, LOBBY_H)
@@ -98,13 +99,15 @@ export async function PUT(request: Request) {
             ? rectBounds(TENT_MAX_W, TENT_MAX_H)
             : space === "prison"
               ? rectBounds(44, 32)
-              : isCave
-                ? rectBounds(64, 64)
-                : isRuins
-                  ? rectBounds(48, 48)
-                  : isDungeon
-                    ? rectBounds(52, 52)
-                    : worldBounds();
+              : isApartment
+                ? rectBounds(24, 18)
+                : isCave
+                  ? rectBounds(64, 64)
+                  : isRuins
+                    ? rectBounds(48, 48)
+                    : isDungeon
+                      ? rectBounds(52, 52)
+                      : worldBounds();
   const heartbeat = sanitizeHeartbeat(body, bounds);
   if (!heartbeat) {
     return NextResponse.json({ error: "invalid_heartbeat" }, { status: 400, headers: NO_STORE });

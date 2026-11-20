@@ -12,6 +12,7 @@ export const MACHINE_ITEM_IDS: readonly string[] = [
   "smart_vending",
   "security_camera",
   "logistics_sorter",
+  "conveyor_relay",
   "custom_machine",
 ];
 
@@ -99,10 +100,19 @@ export const MACHINE_SPECS: Readonly<Record<string, MachineSpec>> = {
     id: "logistics_sorter",
     name: "物流ソーター",
     roleLabel: "LOGISTICS",
-    desc: "周囲5×5にある他マシンの生産バッファを1か所に自動集約します。",
+    desc: "周囲5×5にある他マシンの生産バッファを1か所に集約し、CNC加工機・自販機へ自動供給します。",
     radius: 2,
     defaultIntervalSec: 30,
     accentColor: "#6366f1",
+  },
+  conveyor_relay: {
+    id: "conveyor_relay",
+    name: "自動ベルトコンベア中継機",
+    roleLabel: "BELT RELAY",
+    desc: "周囲5×5のマシンと物流ソーターの生産配管を延長接続し、工場ラインを構築します。",
+    radius: 2,
+    defaultIntervalSec: 30,
+    accentColor: "#14b8a6",
   },
   custom_machine: {
     id: "custom_machine",
@@ -393,6 +403,8 @@ export interface VendingSlot {
   stock: number;
 }
 
+export type LogisticsRouteMode = "buffer" | "feed_cnc" | "feed_vending";
+
 export interface MachineState {
   ownerId: string;
   ownerKey?: string;
@@ -406,6 +418,7 @@ export interface MachineState {
   vendingSales?: number;
   alerts?: { at: number; message: string; actorId?: string }[];
   poweredByNearby?: boolean;
+  routeMode?: LogisticsRouteMode;
   lastEvalAt: number;
   updatedAt: number;
 }
@@ -496,6 +509,9 @@ export function parseMachineState(raw: unknown): MachineState | null {
       .slice(0, 12);
   }
   if (v.poweredByNearby === true) out.poweredByNearby = true;
+  if (v.routeMode === "buffer" || v.routeMode === "feed_cnc" || v.routeMode === "feed_vending") {
+    out.routeMode = v.routeMode;
+  }
   return out;
 }
 

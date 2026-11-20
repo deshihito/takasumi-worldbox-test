@@ -296,6 +296,7 @@ export type LobbyStation =
   | "telescope"
   | "piano"
   | "stock"
+  | "dealer"
   | "prison_work"
   | "prison_desk"
   | "prison_escape"
@@ -799,6 +800,11 @@ put("vending", 118, 74);
 put("table_round", 104, 72);
 put("chair", 103, 72);
 put("chair", 105, 72);
+put("shop_counter", 107, 73, { station: "dealer" });
+put("shop_counter", 108, 73, { station: "dealer" });
+put("sign_board", 109, 73, { station: "dealer" });
+put("display_case", 110, 73, { station: "dealer" });
+put("lamp", 111, 73);
 put("pillar", 103, 56);
 put("pillar", 112, 56);
 put("pillar", 103, 64);
