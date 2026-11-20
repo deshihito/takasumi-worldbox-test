@@ -670,7 +670,7 @@ export async function POST(request: Request) {
         if (nextWanted >= 3) {
           await pushMmoNews(
             "crime",
-            `【指名手配★${nextWanted}】${displayName} が「${atValidSpot.label}」で ${crime.name} を実行！`,
+            `[指名手配 Lv${nextWanted}] ${displayName} が「${atValidSpot.label}」で ${crime.name} を実行`,
             now,
           );
         }
@@ -827,7 +827,7 @@ export async function POST(request: Request) {
       const cellPos = prisonCellEntry(targetRec.cellId);
       const jailedTarget = sentencePlayer(targetRec, {
         code: "citizen_arrest",
-        label: `指名手配逮捕（★${targetRec.wantedLevel}）`,
+        label: `指名手配逮捕（Lv${targetRec.wantedLevel}）`,
         sentenceMs,
         bailAmount: Math.round(Math.max(1500, baseBounty * 2) * gov.policies.bailMultiplier),
         arrestedBy: displayName,

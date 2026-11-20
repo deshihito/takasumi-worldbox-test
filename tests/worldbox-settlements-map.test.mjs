@@ -134,23 +134,34 @@ test("map-pins module validates persisted pins and provides lobby/prison POIs", 
       {
         id: "p1",
         label: " マイ拠点テスト ",
-        icon: "🏠",
+        icon: "home",
         color: "#4ade80",
         space: "lobby",
         x: 28.44,
         y: 24.16,
       },
+      {
+        id: "p2",
+        label: "旧互換",
+        icon: String.fromCodePoint(0x1f4cc),
+        color: "#38bdf8",
+        space: "world",
+        x: 10,
+        y: 20,
+      },
       { invalid: true },
-      { id: "p2", x: "nan" },
+      { id: "p3", x: "nan" },
     ]),
   );
-  assert.equal(parsed.length, 1);
+  assert.equal(parsed.length, 2);
   assert.equal(parsed[0].label, "マイ拠点テスト");
+  assert.equal(parsed[0].icon, "home");
   assert.equal(parsed[0].x, 28.4);
   assert.equal(parsed[0].y, 24.2);
+  assert.equal(parsed[1].icon, "pin");
 });
 
-test("Phase 3 UI overhaul: Lobby/Multi-space maps, tracking, non-overlapping HUD, and reduced prose slop", () => {
+test("Phase 3 UI overhaul: Lobby/Multi-space maps, tracking, non-overlapping HUD, and zero emojis with custom SVGs", () => {
   const client = fs.readFileSync(
     path.join(rootDir, "src/app/games/worldbox/WorldBoxClient.tsx"),
     "utf8",
@@ -168,6 +179,7 @@ test("Phase 3 UI overhaul: Lobby/Multi-space maps, tracking, non-overlapping HUD
     path.join(rootDir, "src/app/games/worldbox/WorldBoxMetroPanel.tsx"),
     "utf8",
   );
+  const wbIcon = fs.readFileSync(path.join(rootDir, "src/app/games/worldbox/WbIcon.tsx"), "utf8");
 
   // Universal minimap & map shortcut across Lobby / Prison / World
   assert.doesNotMatch(
@@ -184,6 +196,37 @@ test("Phase 3 UI overhaul: Lobby/Multi-space maps, tracking, non-overlapping HUD
   assert.match(client, /evaluateCitizenPose\(/);
   assert.match(modal, /paintIndoorMapCanvas/);
   assert.match(modal, /settlementsNear/);
+
+  // Handcrafted SVG system & zero Unicode emojis across WorldBox UI/MMO/API files
+  assert.match(wbIcon, /export function WbIcon/);
+  assert.match(wbIcon, /drawCanvasPinGlyph/);
+  const emojiCheckRe =
+    /[\u{1F1E0}-\u{1FAFF}\u{2600}-\u{27BF}\u{231A}-\u{23FA}\u{2B50}\u{2B55}\u{FE0F}]/u;
+  for (const rel of [
+    "src/app/games/worldbox/WorldBoxClient.tsx",
+    "src/app/games/worldbox/WorldBoxMapModal.tsx",
+    "src/app/games/worldbox/WorldBoxMetroPanel.tsx",
+    "src/app/games/worldbox/WorldBoxPrisonPanel.tsx",
+    "src/app/games/worldbox/WorldBoxJobPanel.tsx",
+    "src/app/games/worldbox/WorldBoxEngineeringPanel.tsx",
+    "src/app/games/worldbox/WorldBoxGovernancePanel.tsx",
+    "src/app/games/worldbox/WorldBoxMachinePanel.tsx",
+    "src/app/games/worldbox/WorldBoxRealEstatePanel.tsx",
+    "src/app/games/worldbox/WorldBoxTradePanel.tsx",
+    "src/app/games/worldbox/WorldBoxCasinoPanel.tsx",
+    "src/app/games/worldbox/arcade/MiniArcadeGame.tsx",
+    "src/lib/worldbox/world/map-pins.ts",
+    "src/lib/worldbox/social/jobs.ts",
+    "src/lib/worldbox/activity/casino.ts",
+    "src/app/api/worldbox/contracts/route.ts",
+    "src/app/api/worldbox/governance/route.ts",
+    "src/app/api/worldbox/prison/route.ts",
+    "src/app/api/worldbox/realestate/route.ts",
+    "src/app/api/worldbox/trade/route.ts",
+  ]) {
+    const content = fs.readFileSync(path.join(rootDir, rel), "utf8");
+    assert.doesNotMatch(content, emojiCheckRe, `Unicode emoji still present in ${rel}`);
+  }
 
   // HUD non-overlap fixes & smooth modal animation
   assert.doesNotMatch(css, /\.wb-mmo-waypoint\s*\{[^}]*bottom:\s*14px/);

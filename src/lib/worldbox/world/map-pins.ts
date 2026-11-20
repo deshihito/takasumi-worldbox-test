@@ -1,4 +1,4 @@
-export type PinIconId = "📌" | "🏠" | "⛏️" | "🏙️" | "🏪" | "⭐";
+export type PinIconId = "pin" | "home" | "mine" | "city" | "shop" | "star";
 
 export interface MapPin {
   id: string;
@@ -28,23 +28,44 @@ export type TrackedTarget =
       color?: string;
     };
 
+export type PoiIconId =
+  | "fountain"
+  | "door"
+  | "bank"
+  | "chart"
+  | "cafe"
+  | "anvil"
+  | "bag"
+  | "dice"
+  | "anchor"
+  | "race"
+  | "gov"
+  | "drink"
+  | "stairs"
+  | "gamepad"
+  | "piano"
+  | "telescope"
+  | "card"
+  | "gift"
+  | "vent";
+
 export interface SpacePoi {
   id: string;
   space: string;
   x: number;
   y: number;
   label: string;
-  badge: string;
+  badge: PoiIconId;
   color: string;
 }
 
 export const PIN_ICONS: readonly { icon: PinIconId; label: string; color: string }[] = [
-  { icon: "📌", label: "ピン", color: "#38bdf8" },
-  { icon: "🏠", label: "拠点", color: "#4ade80" },
-  { icon: "⛏️", label: "採掘", color: "#f59e0b" },
-  { icon: "🏙️", label: "街", color: "#818cf8" },
-  { icon: "🏪", label: "店舗", color: "#fb7185" },
-  { icon: "⭐", label: "重要", color: "#facc15" },
+  { icon: "pin", label: "ピン", color: "#38bdf8" },
+  { icon: "home", label: "拠点", color: "#4ade80" },
+  { icon: "mine", label: "採掘", color: "#f59e0b" },
+  { icon: "city", label: "街", color: "#818cf8" },
+  { icon: "shop", label: "店舗", color: "#fb7185" },
+  { icon: "star", label: "重要", color: "#facc15" },
 ];
 
 export const MAP_PINS_STORAGE_KEY = "wb-map-pins-v1";
@@ -57,7 +78,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 28,
     y: 24,
     label: "中央噴水広場",
-    badge: "⛲",
+    badge: "fountain",
     color: "#38bdf8",
   },
   {
@@ -66,7 +87,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 28,
     y: 31,
     label: "ワールド出口ゲート",
-    badge: "🚪",
+    badge: "door",
     color: "#4ade80",
   },
   {
@@ -75,7 +96,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 40,
     y: 10,
     label: "北東メトロ銀行・大金庫",
-    badge: "🏦",
+    badge: "bank",
     color: "#facc15",
   },
   {
@@ -84,7 +105,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 43,
     y: 5,
     label: "金融街・証券＆ATM",
-    badge: "📈",
+    badge: "chart",
     color: "#34d399",
   },
   {
@@ -93,7 +114,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 5,
     y: 7,
     label: "西グルメ・カフェカウンター",
-    badge: "☕",
+    badge: "cafe",
     color: "#fb923c",
   },
   {
@@ -102,7 +123,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 28,
     y: 38,
     label: "蒸気鍛冶工房",
-    badge: "⚒️",
+    badge: "anvil",
     color: "#94a3b8",
   },
   {
@@ -111,7 +132,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 14,
     y: 34,
     label: "ギルド商店・販売街",
-    badge: "🛍️",
+    badge: "bag",
     color: "#f472b6",
   },
   {
@@ -120,7 +141,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 11,
     y: 56,
     label: "メトロ・ロイヤルカジノ",
-    badge: "🎰",
+    badge: "dice",
     color: "#c084fc",
   },
   {
@@ -129,7 +150,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 38,
     y: 71,
     label: "南部ハーバー桟橋カフェ",
-    badge: "⚓",
+    badge: "anchor",
     color: "#22d3ee",
   },
   {
@@ -138,7 +159,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 63,
     y: 45,
     label: "タカスミ競馬場",
-    badge: "🐎",
+    badge: "race",
     color: "#f59e0b",
   },
   {
@@ -147,7 +168,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 106,
     y: 52,
     label: "南東商業ギルド・金庫",
-    badge: "🏛️",
+    badge: "gov",
     color: "#fbbf24",
   },
   {
@@ -156,7 +177,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 140,
     y: 9,
     label: "東リゾート カフェバー",
-    badge: "🍹",
+    badge: "drink",
     color: "#38bdf8",
   },
   {
@@ -165,7 +186,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 17,
     y: 50,
     label: "2F ラウンジ＆ゲームへ",
-    badge: "🪜",
+    badge: "stairs",
     color: "#e2e8f0",
   },
 
@@ -176,7 +197,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 20,
     y: 12,
     label: "2F アーケード街",
-    badge: "🕹️",
+    badge: "gamepad",
     color: "#22d3ee",
   },
   {
@@ -185,7 +206,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 20,
     y: 5,
     label: "グランドピアノ＆舞台",
-    badge: "🎹",
+    badge: "piano",
     color: "#f472b6",
   },
 
@@ -196,7 +217,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 18,
     y: 10,
     label: "3F パーティー筐体階",
-    badge: "🎮",
+    badge: "gamepad",
     color: "#818cf8",
   },
   {
@@ -205,7 +226,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 18,
     y: 4,
     label: "展望天体望遠鏡",
-    badge: "🔭",
+    badge: "telescope",
     color: "#38bdf8",
   },
 
@@ -216,7 +237,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 35,
     y: 9,
     label: "東棟・懲役ワークプレス",
-    badge: "⚒️",
+    badge: "anvil",
     color: "#4ade80",
   },
   {
@@ -225,7 +246,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 25,
     y: 26,
     label: "面会室・保釈申請デスク",
-    badge: "💳",
+    badge: "card",
     color: "#fbbf24",
   },
   {
@@ -234,7 +255,7 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 18,
     y: 26,
     label: "面会差し入れカウンター",
-    badge: "🎁",
+    badge: "gift",
     color: "#38bdf8",
   },
   {
@@ -243,13 +264,26 @@ export const SPACE_POIS: readonly SpacePoi[] = [
     x: 4,
     y: 27,
     label: "南西メンテナンス換気口",
-    badge: "🕳️",
+    badge: "vent",
     color: "#ef4444",
   },
 ];
 
 export function poisForSpace(space: string): SpacePoi[] {
   return SPACE_POIS.filter((p) => p.space === space);
+}
+
+function normalizePinIcon(raw: unknown): PinIconId {
+  const s = String(raw ?? "pin");
+  const matched = PIN_ICONS.find((p) => p.icon === s);
+  if (matched) return matched.icon;
+  const cp = s.codePointAt(0);
+  if (cp === 0x1f3e0) return "home";
+  if (cp === 0x26cf) return "mine";
+  if (cp === 0x1f3d9) return "city";
+  if (cp === 0x1f3ea) return "shop";
+  if (cp === 0x2b50) return "star";
+  return "pin";
 }
 
 export function parseMapPins(raw: unknown): MapPin[] {
@@ -277,8 +311,8 @@ export function parseMapPins(raw: unknown): MapPin[] {
     ) {
       continue;
     }
-    const iconRaw = String(v.icon ?? "📌") as PinIconId;
-    const matched = PIN_ICONS.find((p) => p.icon === iconRaw) ?? PIN_ICONS[0];
+    const iconId = normalizePinIcon(v.icon);
+    const matched = PIN_ICONS.find((p) => p.icon === iconId) ?? PIN_ICONS[0];
     out.push({
       id: v.id,
       label: typeof v.label === "string" && v.label.trim() ? v.label.trim().slice(0, 24) : "ピン",

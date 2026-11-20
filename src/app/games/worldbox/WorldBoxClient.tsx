@@ -315,6 +315,7 @@ import {
   prisonTileAt,
 } from "@/lib/worldbox/world/prison-map";
 import { ItemSlot as ItemSlotView, ItemSlotGrid } from "./ItemSlotGrid";
+import { WbIcon, drawCanvasPinGlyph } from "./WbIcon";
 import WorldBoxMapModal, { paintIndoorMapCanvas, type MapSnapshot } from "./WorldBoxMapModal";
 import {
   evaluateCitizenPose,
@@ -1176,7 +1177,7 @@ export default function WorldBoxClient() {
     pushFloatText(
       playerPosRef.current.x,
       playerPosRef.current.y - 0.8,
-      `🧭 ${wp.label}`,
+      `案内: ${wp.label}`,
       "#38bdf8",
     );
   };
@@ -5517,14 +5518,14 @@ export default function WorldBoxClient() {
             const nearPlayer = Math.hypot(pose.x - player.x, pose.y - player.y) <= 3.6;
             const roleSym =
               cit.role === "guard"
-                ? "🛡"
+                ? "[警]"
                 : cit.role === "barista"
-                  ? "☕"
+                  ? "[茶]"
                   : cit.role === "delivery"
-                    ? "📦"
+                    ? "[配]"
                     : cit.role === "engineer"
-                      ? "⚙"
-                      : "🏙";
+                      ? "[工]"
+                      : "[市]";
             drawList.push({
               y: pose.y + PLAYER_RADIUS,
               draw: () => {
@@ -5584,16 +5585,10 @@ export default function WorldBoxClient() {
               ctx.beginPath();
               ctx.ellipse(sx, sy + 2, 7, 3, 0, 0, Math.PI * 2);
               ctx.fill();
-              ctx.fillStyle = pin.color;
-              ctx.strokeStyle = "#ffffff";
-              ctx.lineWidth = 1.5;
-              ctx.beginPath();
-              ctx.arc(sx, sy - 14 + bob, 9, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.stroke();
+              drawCanvasPinGlyph(ctx, pin.icon, sx, sy - 14 + bob, 9.5, pin.color);
               ctx.font = "700 10.5px sans-serif";
               ctx.textAlign = "center";
-              const label = `${pin.icon} ${pin.label}`;
+              const label = pin.label;
               const tw = ctx.measureText(label).width + 8;
               ctx.fillStyle = "rgba(10,16,28,0.85)";
               ctx.fillRect(sx - tw / 2, sy - 34 + bob, tw, 14);
@@ -7125,7 +7120,7 @@ export default function WorldBoxClient() {
           {spaceUi === "world"
             ? (() => {
                 const nearStl = nearestSettlement(coords.x, coords.y, 26);
-                return nearStl ? ` ・ 🏙️ ${nearStl.name} (${nearStl.population}人)` : "";
+                return nearStl ? ` ・ ${nearStl.name} (${nearStl.population}人)` : "";
               })()
             : ""}
           {` ・ 座標 X ${coords.x} / Y ${coords.y}`}
@@ -7156,9 +7151,9 @@ export default function WorldBoxClient() {
                 : "calc(42px + env(safe-area-inset-top, 0px))",
             }}
           >
-            <span>
-              🔒 収監中 ({mmoSummary.prison.cellId}) ・ 残刑期{" "}
-              {Math.max(0, Math.ceil(mmoSummary.prison.remainingMs / 1000))}秒
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <WbIcon name="lock" size={13} color="#fca5a5" /> 収監中 ({mmoSummary.prison.cellId})
+              ・ 残刑期 {Math.max(0, Math.ceil(mmoSummary.prison.remainingMs / 1000))}秒
             </span>
             <button
               type="button"
@@ -7172,8 +7167,13 @@ export default function WorldBoxClient() {
         )}
         {trackedTarget && (
           <div className="wb-mmo-waypoint" role="status">
-            <span>
-              {trackedTarget.kind === "player" ? "🎯 追跡中:" : "🧭 目的地:"} {trackedTarget.label}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <WbIcon
+                name={trackedTarget.kind === "player" ? "target" : "compass"}
+                size={13}
+                color="#38bdf8"
+              />
+              {trackedTarget.kind === "player" ? "追跡中:" : "目的地:"} {trackedTarget.label}
             </span>
             <span
               ref={trackedDistElRef}
@@ -7487,10 +7487,13 @@ export default function WorldBoxClient() {
                   padding: "2px 10px",
                   background: "#d97706",
                   borderColor: "#fbbf24",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
                 }}
                 onClick={() => setJobOpen(true)}
               >
-                ☕ カフェ運営
+                <WbIcon name="cafe" size={13} color="#fef3c7" /> カフェ運営
               </button>
             )}
             {stationUi === "bank" && (
@@ -7510,10 +7513,13 @@ export default function WorldBoxClient() {
                     padding: "2px 10px",
                     background: "#991b1b",
                     borderColor: "#f87171",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
                   }}
                   onClick={() => setPrisonOpen(true)}
                 >
-                  🔐 金庫/工作
+                  <WbIcon name="keyhole" size={13} color="#fecaca" /> 金庫/工作
                 </button>
               </>
             )}
@@ -8119,13 +8125,13 @@ export default function WorldBoxClient() {
                 setTrackedTarget({
                   kind: "player",
                   presenceId: playerCard.id,
-                  label: `🏃 ${playerCard.name}`,
+                  label: playerCard.name,
                   color: "#38bdf8",
                 });
                 pushFloatText(
                   playerPosRef.current.x,
                   playerPosRef.current.y - 0.8,
-                  `🎯 ${playerCard.name} を追跡`,
+                  `追跡: ${playerCard.name}`,
                   "#38bdf8",
                 );
                 setPlayerCard(null);
@@ -8894,7 +8900,7 @@ export default function WorldBoxClient() {
               pushFloatText(
                 playerPosRef.current.x,
                 playerPosRef.current.y - 0.8,
-                target.kind === "player" ? `🎯 ${target.label} を追跡` : `🧭 ${target.label}`,
+                target.kind === "player" ? `追跡: ${target.label}` : `案内: ${target.label}`,
                 "#38bdf8",
               );
             }}

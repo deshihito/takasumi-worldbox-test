@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { WbIcon, type WbIconName } from "./WbIcon";
 import {
   CASINO_BET_TIERS,
   SLOT_SYMBOLS,
@@ -146,11 +147,19 @@ const BJ_OUTCOME_LABEL: Record<string, string> = {
   push: "引き分け",
   bust: "バースト",
 };
-const SUIT_GLYPH: Record<string, { glyph: string; color: string }> = {
-  spade: { glyph: "♠", color: "#e8e8f0" },
-  heart: { glyph: "♥", color: "#ff7a7a" },
-  diamond: { glyph: "♦", color: "#ff7a7a" },
-  club: { glyph: "♣", color: "#e8e8f0" },
+const SUIT_META: Record<string, { icon: WbIconName; color: string }> = {
+  spade: { icon: "spade", color: "#e8e8f0" },
+  heart: { icon: "suit_heart", color: "#ff7a7a" },
+  diamond: { icon: "suit_diamond", color: "#ff7a7a" },
+  club: { icon: "club", color: "#e8e8f0" },
+};
+
+const SLOT_ICON_MAP: Record<string, WbIconName> = {
+  diamond: "suit_diamond",
+  star: "star",
+  circle: "slot_orb",
+  triangle: "slot_tri",
+  square: "slot_sq",
 };
 
 function rankLabel(rank: number): string {
@@ -862,7 +871,15 @@ export default function WorldBoxCasinoPanel({ onClose }: { onClose: () => void }
                     : {}),
                 }}
               >
-                {SLOT_SYMBOLS[idx].glyph}
+                {SLOT_SYMBOLS[idx].glyph === "7" ? (
+                  "7"
+                ) : (
+                  <WbIcon
+                    name={SLOT_ICON_MAP[SLOT_SYMBOLS[idx].glyph] ?? "star"}
+                    size={22}
+                    color={SLOT_SYMBOLS[idx].color}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -1203,9 +1220,11 @@ export default function WorldBoxCasinoPanel({ onClose }: { onClose: () => void }
                       ) : (
                         <>
                           <span>{rankLabel(c.rank)}</span>
-                          <span style={{ color: SUIT_GLYPH[c.suit]?.color }}>
-                            {SUIT_GLYPH[c.suit]?.glyph}
-                          </span>
+                          <WbIcon
+                            name={SUIT_META[c.suit]?.icon ?? "spade"}
+                            size={14}
+                            color={SUIT_META[c.suit]?.color ?? "#e8e8f0"}
+                          />
                         </>
                       )}
                     </div>
@@ -1218,9 +1237,11 @@ export default function WorldBoxCasinoPanel({ onClose }: { onClose: () => void }
                   {player.map((c, i) => (
                     <div key={`${i}-${c.rank}-${c.suit}`} style={cardBox}>
                       <span>{rankLabel(c.rank)}</span>
-                      <span style={{ color: SUIT_GLYPH[c.suit]?.color }}>
-                        {SUIT_GLYPH[c.suit]?.glyph}
-                      </span>
+                      <WbIcon
+                        name={SUIT_META[c.suit]?.icon ?? "spade"}
+                        size={14}
+                        color={SUIT_META[c.suit]?.color ?? "#e8e8f0"}
+                      />
                     </div>
                   ))}
                 </div>

@@ -39,7 +39,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "freelancer",
     name: "メトロ配達ギグ",
-    badge: "📦",
+    badge: "package",
     category: "街の商業",
     desc: "フードデリバリーや書類配送を担う都市の基本ワーク。初心者でも即収入。",
     basePay: 280,
@@ -52,7 +52,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "retail",
     name: "コンビニ・カフェ接客",
-    badge: "☕",
+    badge: "cafe",
     category: "街の商業",
     desc: "レジ会計・コーヒー抽出・棚出しを行う都市接客ワーク。",
     basePay: 360,
@@ -65,7 +65,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "farmer",
     name: "スマート農業技師",
-    badge: "🌱",
+    badge: "sprout",
     category: "産業・技術",
     desc: "作物の生育管理と水耕ラボ保守を担当するアグリ専門職。",
     basePay: 420,
@@ -81,7 +81,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "miner",
     name: "重機採掘オペレーター",
-    badge: "⛏️",
+    badge: "pick",
     category: "産業・技術",
     desc: "大型重機と掘削ドリルを操り希少鉱脈を切り開くエネルギー産業職。",
     basePay: 540,
@@ -97,7 +97,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "engineer",
     name: "機械エンジニア",
-    badge: "⚙️",
+    badge: "gear",
     category: "産業・技術",
     desc: "自動機械の制御プログラム開発と回路設計を手掛ける技術職。",
     basePay: 680,
@@ -113,7 +113,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "builder",
     name: "都市建築士",
-    badge: "🏗️",
+    badge: "building",
     category: "産業・技術",
     desc: "ワールドや商業区画の建築設計・インフラ整備を担う。",
     basePay: 620,
@@ -129,7 +129,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "medic",
     name: "メトロ救急救命士",
-    badge: "🩺",
+    badge: "heart_pulse",
     category: "公共・治安",
     desc: "街の健康維持・救急搬送を担うスペシャリスト。",
     basePay: 580,
@@ -142,7 +142,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "police",
     name: "メトロ治安維持官（警察・看守）",
-    badge: "🛡️",
+    badge: "shield",
     category: "公共・治安",
     desc: "街のパトロールと指名手配犯の逮捕・刑務所管理を担当する花形職。",
     basePay: 700,
@@ -155,7 +155,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "lawyer",
     name: "企業・刑事弁護士",
-    badge: "⚖️",
+    badge: "scale",
     category: "公共・治安",
     desc: "司法取引・保釈請求・企業コンプライアンスを統括する法律のプロ。",
     basePay: 920,
@@ -168,7 +168,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "trader",
     name: "クオンツ証券アナリスト",
-    badge: "📈",
+    badge: "chart",
     category: "金融・情報",
     desc: "コモディティや株式ボードを分析し市場流動性を回す高度金融職。",
     basePay: 980,
@@ -182,7 +182,7 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "journalist",
     name: "メトロ都市報道記者",
-    badge: "📰",
+    badge: "news",
     category: "金融・情報",
     desc: "経済動向や警察事件を取材して街のニュースティッカーへ届ける報道職。",
     basePay: 600,
@@ -194,14 +194,14 @@ export const CAREERS: readonly CareerDef[] = [
   {
     id: "broker",
     name: "アンダーグラウンド情報屋",
-    badge: "🕶️",
+    badge: "spy",
     category: "金融・情報",
     desc: "表経済の裏で高報酬の極秘案件を仲介するハイリスク職業。",
     basePay: 1250,
     hungerCost: 12,
     cooldownMs: 85_000,
     minLevelReq: 3,
-    perkLabel: "超高単価だが確率で手配度★+1リスク＆闇道具入手",
+    perkLabel: "超高単価だが確率で手配Lv+1リスク＆闇道具入手",
     dropItems: [{ itemId: "lockpick", chance: 0.18 }],
     isRisky: true,
   },

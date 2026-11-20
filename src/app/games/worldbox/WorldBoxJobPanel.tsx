@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon, type WbIconName } from "./WbIcon";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import type {
   ActiveDeliveryOrder,
@@ -123,7 +124,7 @@ export default function WorldBoxJobPanel({
   const guideTo = (wp: { space: string; x: number; y: number; label: string }) => {
     if (onSetWaypoint) {
       onSetWaypoint(wp);
-      setMsg(`🧭 マップ上にコンパス案内をセットしました → ${wp.label}`);
+      setMsg(`[案内] マップ上にコンパス案内をセットしました: ${wp.label}`);
     }
   };
 
@@ -211,8 +212,8 @@ export default function WorldBoxJobPanel({
         : res.taskCorrect === false
           ? "【ミス減額】"
           : "【シフト完了】";
-    const promo = res.leveledUp ? " ★昇格しました！" : "";
-    const warn = res.wantedNotice ? " ⚠ 捜査機関に怪しまれ手配度★+1！" : "";
+    const promo = res.leveledUp ? " [昇格]" : "";
+    const warn = res.wantedNotice ? " [警告: 手配Lv+1]" : "";
     setMsg(
       `${tag} 手取 +¥${(payout?.net ?? 0).toLocaleString()}（市税 ¥${(payout?.tax ?? 0).toLocaleString()}）${dropLabel}${promo}${warn}`,
     );
@@ -257,7 +258,9 @@ export default function WorldBoxJobPanel({
     <div className="wb-panel" style={overlayStyle}>
       <div style={stickyHeaderStyle}>
         <div>
-          <strong style={{ fontSize: 16 }}>💼 メトロ仕事・現地ワークセンター</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="briefcase" size={16} color="#38bdf8" /> メトロ仕事・現地ワークセンター
+          </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
             カフェ実店舗運営・物理配達ルート・警察巡回・12職業キャリア
           </div>
@@ -316,15 +319,18 @@ export default function WorldBoxJobPanel({
       {data?.jailed && (
         <div
           style={{
-            padding: "8px 12px",
+            padding: "8px 10px",
             marginBottom: 10,
             borderRadius: 8,
             background: "rgba(185,28,28,0.28)",
             border: "1px solid rgba(248,113,113,0.45)",
             fontSize: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
-          ⚠ 収監中のため通常仕事は停止されています。
+          <WbIcon name="alert" size={14} color="#fca5a5" /> 収監中のため通常仕事は停止されています。
         </div>
       )}
 
@@ -332,16 +338,20 @@ export default function WorldBoxJobPanel({
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "field" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           onClick={() => setTab("field")}
         >
-          📍 現地実地ワーク
+          <WbIcon name="pin" size={12} color={tab === "field" ? "#38bdf8" : "#cbd5e1"} />{" "}
+          現地実地ワーク
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "shift" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           onClick={() => setTab("shift")}
         >
-          💼 業務シフト
+          <WbIcon name="briefcase" size={12} color={tab === "shift" ? "#38bdf8" : "#cbd5e1"} />{" "}
+          業務シフト
         </button>
         <button
           type="button"
@@ -388,9 +398,10 @@ export default function WorldBoxJobPanel({
             <button
               type="button"
               className="wb-mmo-btn wb-mmo-btn-cyan"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
               onClick={() => guideTo(suggestedWp)}
             >
-              📍 現場をマップ案内
+              <WbIcon name="compass" size={12} color="#cffafe" /> 現場をマップ案内
             </button>
           )}
         </div>
@@ -410,7 +421,10 @@ export default function WorldBoxJobPanel({
               }}
             >
               <div>
-                <div style={{ fontWeight: 800 }}>☕ 現地カフェカウンター営業（実店舗限定）</div>
+                <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                  <WbIcon name="cafe" size={14} color="#fbbf24" />{" "}
+                  現地カフェカウンター営業（実店舗限定）
+                </div>
                 <div style={{ fontSize: 11, color: "#94a3b8" }}>
                   ロビー内のグルメ店舗（{nearestCafe?.label ?? "西グルメ"} ・ 現在{" "}
                   {nearestCafe ? distLabel(data.actorPos, nearestCafe).text : "---"}）で直接接客！
@@ -420,9 +434,10 @@ export default function WorldBoxJobPanel({
                 <button
                   type="button"
                   className="wb-mmo-btn wb-mmo-btn-cyan"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                   onClick={() => guideTo(nearestCafe)}
                 >
-                  📍 最寄りカフェ案内
+                  <WbIcon name="compass" size={12} color="#cffafe" /> 最寄りカフェ案内
                 </button>
               )}
             </div>
@@ -439,8 +454,16 @@ export default function WorldBoxJobPanel({
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong style={{ color: "#fbbf24" }}>
-                    🧾 {jobProfile.activeCafe.ticket.customerName}「
+                  <strong
+                    style={{
+                      color: "#fbbf24",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <WbIcon name="receipt" size={13} color="#fbbf24" />{" "}
+                    {jobProfile.activeCafe.ticket.customerName}「
                     {jobProfile.activeCafe.ticket.drinkName}」
                   </strong>
                   <span style={{ fontSize: 11, opacity: 0.8 }}>
@@ -474,6 +497,12 @@ export default function WorldBoxJobPanel({
                   type="button"
                   disabled={busy || !atCafeNow || cafeTray.length === 0}
                   className="wb-mmo-btn wb-mmo-btn-primary"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                  }}
                   onClick={() =>
                     void callAction({ action: "serve_cafe_order", ingredients: cafeTray }).then(
                       (r) => {
@@ -481,14 +510,15 @@ export default function WorldBoxJobPanel({
                         setCafeTray([]);
                         setMsg(
                           r.exactMatch
-                            ? `☕ パーフェクト提供！ 手取 +¥${Number(r.net).toLocaleString()}（次のお客様が来店中）`
-                            : `☕ レシピ違いで減額… +¥${Number(r.net).toLocaleString()}`,
+                            ? `[提供完了] パーフェクト提供！ 手取 +¥${Number(r.net).toLocaleString()}（次のお客様が来店中）`
+                            : `[提供完了] レシピ違いで減額… +¥${Number(r.net).toLocaleString()}`,
                         );
                       },
                     )
                   }
                 >
-                  {atCafeNow ? "☕ カウンターで提供して精算" : "⚠ カフェカウンター前で提供できます"}
+                  <WbIcon name={atCafeNow ? "cafe" : "alert"} size={13} />
+                  {atCafeNow ? "カウンターで提供して精算" : "カフェカウンター前で提供できます"}
                 </button>
               </div>
             ) : (
@@ -496,10 +526,17 @@ export default function WorldBoxJobPanel({
                 type="button"
                 disabled={busy || data.jailed || !atCafeNow}
                 className="wb-mmo-btn wb-mmo-btn-amber"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                }}
                 onClick={() => void callAction({ action: "start_cafe" })}
               >
+                <WbIcon name="bell" size={13} color="#fef3c7" />
                 {atCafeNow
-                  ? "🛎️ カフェカウンターに立って注文を受ける"
+                  ? "カフェカウンターに立って注文を受ける"
                   : "まずロビー内カフェへ移動してください"}
               </button>
             )}
@@ -507,8 +544,9 @@ export default function WorldBoxJobPanel({
 
           {/* 2. Physical Coordinate Delivery Route */}
           <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 800 }}>
-              🚚 メトロ実地配達ミッション（目的地へ移動・車両ボーナス対応）
+            <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+              <WbIcon name="truck" size={14} color="#38bdf8" />{" "}
+              メトロ実地配達ミッション（目的地へ移動・車両ボーナス対応）
             </div>
             {activeDelivery ? (
               <div style={{ display: "grid", gap: 6 }}>
@@ -530,6 +568,7 @@ export default function WorldBoxJobPanel({
                     <button
                       type="button"
                       className="wb-mmo-btn wb-mmo-btn-cyan"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={() =>
                         guideTo({
                           space: activeDelivery.targetSpace,
@@ -539,18 +578,19 @@ export default function WorldBoxJobPanel({
                         })
                       }
                     >
-                      🧭 目的地コンパスを表示
+                      <WbIcon name="compass" size={12} color="#cffafe" /> 目的地コンパスを表示
                     </button>
                   )}
                   <button
                     type="button"
                     disabled={busy || data.jailed}
                     className="wb-mmo-btn wb-mmo-btn-primary"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                     onClick={() =>
                       void callAction({ action: "complete_delivery" }).then((r) => {
                         if (r) {
                           setMsg(
-                            `📦 配達完了！ +¥${Number(r.net).toLocaleString()}${
+                            `[配達完了] +¥${Number(r.net).toLocaleString()}${
                               Number(r.vehicleBonusPct ?? 0) > 0
                                 ? `（車両補正 +${r.vehicleBonusPct}%）`
                                 : ""
@@ -560,7 +600,7 @@ export default function WorldBoxJobPanel({
                       })
                     }
                   >
-                    ✅ 荷物を現地へ納品する
+                    <WbIcon name="check" size={12} color="#dcfce7" /> 荷物を現地へ納品する
                   </button>
                   <button
                     type="button"
@@ -577,6 +617,12 @@ export default function WorldBoxJobPanel({
                 type="button"
                 disabled={busy || data.jailed}
                 className="wb-mmo-btn wb-mmo-btn-cyan"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                }}
                 onClick={() =>
                   void callAction({ action: "start_delivery" }).then((r) => {
                     const d = r?.delivery as ActiveDeliveryOrder | undefined;
@@ -591,7 +637,7 @@ export default function WorldBoxJobPanel({
                   })
                 }
               >
-                📦 配送ルートを受注して出発する
+                <WbIcon name="package" size={13} color="#cffafe" /> 配送ルートを受注して出発する
               </button>
             )}
           </div>
@@ -600,7 +646,10 @@ export default function WorldBoxJobPanel({
           {(jobProfile.currentCareer === "police" ||
             jobProfile.certifications.includes("security_officer")) && (
             <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 800 }}>🚓 治安維持パトロール（指定地点を巡回）</div>
+              <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                <WbIcon name="police" size={14} color="#38bdf8" />{" "}
+                治安維持パトロール（指定地点を巡回）
+              </div>
               {activePatrol ? (
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={{ fontSize: 12 }}>
@@ -611,6 +660,7 @@ export default function WorldBoxJobPanel({
                       <button
                         type="button"
                         className="wb-mmo-btn wb-mmo-btn-cyan"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                         onClick={() =>
                           guideTo({
                             space: activePatrol.space,
@@ -620,20 +670,21 @@ export default function WorldBoxJobPanel({
                           })
                         }
                       >
-                        🧭 巡回先案内
+                        <WbIcon name="compass" size={12} color="#cffafe" /> 巡回先案内
                       </button>
                     )}
                     <button
                       type="button"
                       disabled={busy}
                       className="wb-mmo-btn wb-mmo-btn-primary"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={() =>
                         void callAction({ action: "complete_patrol" }).then((r) => {
-                          if (r) setMsg(`🚓 巡回点検完了！ +¥${Number(r.net).toLocaleString()}`);
+                          if (r) setMsg(`[巡回点検完了] +¥${Number(r.net).toLocaleString()}`);
                         })
                       }
                     >
-                      ✅ 異常なし・巡回報告
+                      <WbIcon name="check" size={12} color="#dcfce7" /> 異常なし・巡回報告
                     </button>
                   </div>
                 </div>
@@ -642,6 +693,12 @@ export default function WorldBoxJobPanel({
                   type="button"
                   disabled={busy}
                   className="wb-mmo-btn wb-mmo-btn-cyan"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                  }}
                   onClick={() =>
                     void callAction({ action: "start_patrol" }).then((r) => {
                       const p = r?.patrol as SpatialSpot | undefined;
@@ -649,7 +706,7 @@ export default function WorldBoxJobPanel({
                     })
                   }
                 >
-                  🚓 パトロール地点を受令する
+                  <WbIcon name="police" size={13} color="#cffafe" /> パトロール地点を受令する
                 </button>
               )}
             </div>
@@ -669,8 +726,17 @@ export default function WorldBoxJobPanel({
               }}
             >
               <div>
-                <div style={{ fontWeight: 800, fontSize: 14 }}>
-                  {activeCareer.badge} {activeCareer.name}
+                <div
+                  style={{
+                    fontWeight: 800,
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <WbIcon name={activeCareer.badge as WbIconName} size={15} color="#38bdf8" />
+                  {activeCareer.name}
                 </div>
                 <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 2 }}>
                   {activeCareer.desc}
@@ -699,8 +765,18 @@ export default function WorldBoxJobPanel({
                   border: "1px solid rgba(56, 189, 248, 0.35)",
                 }}
               >
-                <div style={{ fontWeight: 700, color: "#38bdf8", marginBottom: 6 }}>
-                  📋 集中タスクチャレンジ（正答で報酬 1.4 倍！）
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: "#38bdf8",
+                    marginBottom: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <WbIcon name="contract" size={14} color="#38bdf8" />{" "}
+                  集中タスクチャレンジ（正答で報酬 1.4 倍！）
                 </div>
                 <div style={{ marginBottom: 8 }}>{task.prompt}</div>
                 <div style={{ display: "grid", gap: 6 }}>
@@ -742,8 +818,16 @@ export default function WorldBoxJobPanel({
 
           {jobProfile.currentCareer === "journalist" && (
             <div className="wb-mmo-card">
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                📰 記者特権：メトロ号外ニュース発行
+              <div
+                style={{
+                  fontWeight: 700,
+                  marginBottom: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <WbIcon name="news" size={14} color="#fbbf24" /> 記者特権：メトロ号外ニュース発行
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
@@ -815,8 +899,11 @@ export default function WorldBoxJobPanel({
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 800 }}>
-                        {career.badge} {career.name}{" "}
+                      <div
+                        style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}
+                      >
+                        <WbIcon name={career.badge as WbIconName} size={14} color="#38bdf8" />
+                        {career.name}{" "}
                         <span style={{ fontSize: 11, color: "#94a3b8" }}>({career.category})</span>
                       </div>
                       <div style={{ fontSize: 11.5, color: "#cbd5e1", marginTop: 2 }}>
@@ -889,8 +976,16 @@ export default function WorldBoxJobPanel({
       {tab === "support" && data && jobProfile && (
         <div style={{ display: "grid", gap: 10 }}>
           <div className="wb-mmo-card">
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>
-              💳 雇用保険・セーフティネット給付
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 4,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <WbIcon name="card" size={14} color="#34d399" /> 雇用保険・セーフティネット給付
             </div>
             <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 8 }}>
               残高
@@ -913,7 +1008,17 @@ export default function WorldBoxJobPanel({
             </button>
           </div>
           <div className="wb-mmo-card">
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>📊 キャリア統計</div>
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 4,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <WbIcon name="bar_chart" size={14} color="#38bdf8" /> キャリア統計
+            </div>
             <div style={{ fontSize: 12, color: "#cbd5e1", display: "grid", gap: 3 }}>
               <div>完了シフト総数: {jobProfile.shiftsCompleted} 回</div>
               <div>連続出勤日数: {jobProfile.streakDays} 日</div>

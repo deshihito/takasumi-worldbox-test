@@ -150,7 +150,7 @@ export async function POST(request: Request) {
       await storeContract(contract);
       void pushMmoNews(
         "job",
-        `📋 新規契約募集：${displayName}「${title}」（報酬 ¥${rewardCoins.toLocaleString()}）`,
+        `[契約募集] ${displayName}「${title}」（報酬 ¥${rewardCoins.toLocaleString()}）`,
         now,
       );
 
@@ -212,7 +212,7 @@ export async function POST(request: Request) {
       await storeContract(completed);
       void pushMmoNews(
         "job",
-        `✅ 契約達成：${displayName} が「${contract.title}」を納品し ¥${contract.rewardCoins.toLocaleString()} を獲得！`,
+        `[契約達成] ${displayName} が「${contract.title}」を納品し ¥${contract.rewardCoins.toLocaleString()} を獲得`,
         now,
       );
 

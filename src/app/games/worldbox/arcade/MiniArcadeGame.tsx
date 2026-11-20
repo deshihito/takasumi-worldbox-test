@@ -91,16 +91,16 @@ function useArcadeEconomy(gameId: string) {
         });
         const j = (await res.json().catch(() => ({}))) as { payout?: number };
         if (won && (j.payout ?? 0) > 0) {
-          setResultMsg(`🏆 勝利！ 賞金 +¥${Number(j.payout).toLocaleString()} を獲得！`);
+          setResultMsg(`[勝利] 賞金 +¥${Number(j.payout).toLocaleString()} を獲得`);
         } else if (draw && s > 0) {
-          setResultMsg(`🤝 引き分け！ 参加費 ¥${s.toLocaleString()} を返却しました`);
+          setResultMsg(`[引分] 参加費 ¥${s.toLocaleString()} を返却しました`);
         } else if (won) {
-          setResultMsg("🏆 クリア！ 素晴らしいプレイでした");
+          setResultMsg("[クリア] 素晴らしいプレイでした");
         } else {
-          setResultMsg("💨 惜敗… もう一回チャレンジ！");
+          setResultMsg("[惜敗] もう一回チャレンジしよう");
         }
       } catch {
-        setResultMsg(won ? "🏆 勝利！" : "終了しました");
+        setResultMsg(won ? "[勝利]" : "終了しました");
       }
     },
     [activeStake, gameId],

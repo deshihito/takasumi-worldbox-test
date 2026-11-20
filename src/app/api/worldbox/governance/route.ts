@@ -133,7 +133,7 @@ export async function POST(request: Request) {
         },
       };
       await storeGovernanceState(gov);
-      void pushMmoNews("job", `🏛️ 市長選挙出馬：${displayName}「${manifesto}」`, now);
+      void pushMmoNews("job", `[市長選挙出馬] ${displayName}「${manifesto}」`, now);
       return NextResponse.json({ ok: true, gov, balance: paid.balance }, { headers: NO_STORE });
     }
 
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
       await storeGovernanceState(gov);
       void pushMmoNews(
         "job",
-        `📜 ${displayName}市長が都市税制・治安ポリシーを改定！（所得税 ${(gov.policies.incomeTaxRate * 100).toFixed(0)}%）`,
+        `[政策改定] ${displayName}市長が都市税制・治安ポリシーを改定（所得税 ${(gov.policies.incomeTaxRate * 100).toFixed(0)}%）`,
         now,
       );
       return NextResponse.json({ ok: true, gov }, { headers: NO_STORE });
@@ -207,11 +207,7 @@ export async function POST(request: Request) {
         status: "open",
       };
       await storeCourtTrial(trial);
-      void pushMmoNews(
-        "prison",
-        `⚖️ 【公開法廷開廷】${displayName} が無罪・減刑陪審審理を請求！`,
-        now,
-      );
+      void pushMmoNews("prison", `[公開法廷開廷] ${displayName} が無罪・減刑陪審審理を請求`, now);
       return NextResponse.json({ ok: true, trial, balance: paid.balance }, { headers: NO_STORE });
     }
 
@@ -257,17 +253,9 @@ export async function POST(request: Request) {
           await storePrisonRecord(releasePrisoner(prisoner));
           await moveToLobby(trial.defendantKey, trial.defendantName);
         }
-        void pushMmoNews(
-          "prison",
-          `⚖️ 判決：${trial.defendantName} に【寛大・即時釈放判決】！`,
-          now,
-        );
+        void pushMmoNews("prison", `[判決] ${trial.defendantName} に寛大・即時釈放判決`, now);
       } else {
-        void pushMmoNews(
-          "prison",
-          `⚖️ 判決：${trial.defendantName} の控訴は棄却（有罪維持）となりました。`,
-          now,
-        );
+        void pushMmoNews("prison", `[判決] ${trial.defendantName} の控訴は棄却（有罪維持）`, now);
       }
       return NextResponse.json({ ok: true, trial: resolved }, { headers: NO_STORE });
     }

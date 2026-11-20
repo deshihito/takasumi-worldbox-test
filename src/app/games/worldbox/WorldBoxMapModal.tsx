@@ -22,6 +22,7 @@ import {
   type TrackedTarget,
 } from "@/lib/worldbox/world/map-pins";
 import { settlementsNear, type Settlement } from "@/lib/worldbox/world/settlements";
+import { WbIcon, drawCanvasPinGlyph } from "./WbIcon";
 
 const TILE_COLOR: Record<number, string> = {
   [T_GRASS]: "#57a639",
@@ -136,18 +137,12 @@ export function paintIndoorMapCanvas(
     if (p.space !== space) continue;
     const px = ox + p.x * scale;
     const py = oy + p.y * scale;
-    ctx.fillStyle = p.color;
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(px, py, showLabels ? 5 : 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    drawCanvasPinGlyph(ctx, p.icon, px, py, showLabels ? 6 : 3.5, p.color);
     if (showLabels) {
       ctx.font = "700 11px sans-serif";
       ctx.textAlign = "center";
       ctx.fillStyle = "#fff";
-      ctx.fillText(`${p.icon}${p.label}`, px, py - 8);
+      ctx.fillText(p.label, px, py - 9);
     }
   }
 
@@ -295,7 +290,7 @@ export default function WorldBoxMapModal({
 
   const [zoomSpan, setZoomSpan] = useState<256 | 512 | 1024>(512);
   const [pinMode, setPinMode] = useState(true);
-  const [pinIcon, setPinIcon] = useState<PinIconId>("📌");
+  const [pinIcon, setPinIcon] = useState<PinIconId>("pin");
   const [pinName, setPinName] = useState("");
   const [sideTab, setSideTab] = useState<"settlements" | "pins" | "pois" | "players">(
     getSnapshot().space === "world" ? "settlements" : "pois",
@@ -394,7 +389,7 @@ export default function WorldBoxMapModal({
         // City / Town nameplate
         ctx.font = "700 11px sans-serif";
         ctx.textAlign = "center";
-        const tag = `${stl.tier === "city" ? "🏙️" : stl.tier === "town" ? "🏘️" : "🏡"} ${stl.name}`;
+        const tag = `${stl.tier === "city" ? "[市]" : stl.tier === "town" ? "[町]" : "[村]"} ${stl.name}`;
         const tw = ctx.measureText(tag).width + 8;
         ctx.fillStyle = "rgba(10,14,22,0.82)";
         ctx.fillRect(mx - tw / 2, my - mr - 15, tw, 13);
@@ -434,17 +429,11 @@ export default function WorldBoxMapModal({
         const px = toX(p.x);
         const py = toY(p.y);
         if (px < -12 || py < -12 || px > CANVAS_SIZE + 12 || py > CANVAS_SIZE + 12) continue;
-        ctx.fillStyle = p.color;
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.arc(px, py, 5.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        drawCanvasPinGlyph(ctx, p.icon, px, py, 6.5, p.color);
         ctx.font = "700 11px sans-serif";
         ctx.textAlign = "center";
         ctx.fillStyle = "#fff";
-        ctx.fillText(`${p.icon} ${p.label}`, px, py - 9);
+        ctx.fillText(p.label, px, py - 10);
       }
 
       // Online players
@@ -557,7 +546,7 @@ export default function WorldBoxMapModal({
         space: hitPin.space,
         x: hitPin.x,
         y: hitPin.y,
-        label: `${hitPin.icon} ${hitPin.label}`,
+        label: hitPin.label,
         color: hitPin.color,
         pinId: hitPin.id,
       });
@@ -605,8 +594,9 @@ export default function WorldBoxMapModal({
       aria-label="メトロ・グローバルマップ"
     >
       <div style={stickyHead}>
-        <strong style={{ fontSize: 15 }}>
-          🗺️ {snap.space === "world" ? "グローバル生活圏マップ" : `エリアマップ (${snap.space})`}
+        <strong style={{ fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <WbIcon name="map" size={16} color="#38bdf8" />
+          {snap.space === "world" ? "グローバル生活圏マップ" : `エリアマップ (${snap.space})`}
         </strong>
         <span style={{ fontSize: 11, color: "#94a3b8" }}>
           現在地 X {Math.round(snap.playerX)} / Y {Math.round(snap.playerY)}
@@ -655,14 +645,20 @@ export default function WorldBoxMapModal({
             <button
               key={pi.icon}
               type="button"
-              style={chipBtn(pinIcon === pi.icon)}
+              style={{
+                ...chipBtn(pinIcon === pi.icon),
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
               onClick={() => {
                 setPinIcon(pi.icon);
                 setPinMode(true);
               }}
               title={pi.label}
             >
-              {pi.icon}
+              <WbIcon name={pi.icon} size={13} color={pi.color} />
+              <span style={{ fontSize: 11 }}>{pi.label}</span>
             </button>
           ))}
         </div>
@@ -686,12 +682,16 @@ export default function WorldBoxMapModal({
             type="button"
             style={{
               ...chipBtn(false),
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
               background: "rgba(220,38,38,0.28)",
               borderColor: "#f87171",
             }}
             onClick={onClearTrack}
           >
-            🎯 追跡解除: {trackedTarget.label}
+            <WbIcon name="target" size={13} color="#fca5a5" />
+            追跡解除: {trackedTarget.label}
           </button>
         )}
       </div>
@@ -724,34 +724,58 @@ export default function WorldBoxMapModal({
             {snap.space === "world" && (
               <button
                 type="button"
-                style={chipBtn(sideTab === "settlements")}
+                style={{
+                  ...chipBtn(sideTab === "settlements"),
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
                 onClick={() => setSideTab("settlements")}
               >
-                🏙️ 都市・町村 ({nearSettlements.length})
+                <WbIcon name="city" size={13} color="#38bdf8" />
+                都市・町村 ({nearSettlements.length})
               </button>
             )}
             {spacePois.length > 0 && (
               <button
                 type="button"
-                style={chipBtn(sideTab === "pois")}
+                style={{
+                  ...chipBtn(sideTab === "pois"),
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
                 onClick={() => setSideTab("pois")}
               >
-                📍 施設 ({spacePois.length})
+                <WbIcon name="compass" size={13} color="#fbbf24" />
+                施設 ({spacePois.length})
               </button>
             )}
             <button
               type="button"
-              style={chipBtn(sideTab === "pins")}
+              style={{
+                ...chipBtn(sideTab === "pins"),
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
               onClick={() => setSideTab("pins")}
             >
-              📌 ピン ({pins.length})
+              <WbIcon name="pin" size={13} color="#4ade80" />
+              ピン ({pins.length})
             </button>
             <button
               type="button"
-              style={chipBtn(sideTab === "players")}
+              style={{
+                ...chipBtn(sideTab === "players"),
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
               onClick={() => setSideTab("players")}
             >
-              🧑 市民 ({visiblePlayers.length})
+              <WbIcon name="user" size={13} color="#e2e8f0" />
+              市民 ({visiblePlayers.length})
             </button>
           </div>
 
@@ -778,8 +802,23 @@ export default function WorldBoxMapModal({
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 700 }}>
-                        {stl.tier === "city" ? "🏙️" : stl.tier === "town" ? "🏘️" : "🏡"} {stl.name}
+                      <div
+                        style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+                      >
+                        <WbIcon
+                          name={
+                            stl.tier === "city" ? "city" : stl.tier === "town" ? "town" : "home"
+                          }
+                          size={14}
+                          color={
+                            stl.tier === "city"
+                              ? "#38bdf8"
+                              : stl.tier === "town"
+                                ? "#facc15"
+                                : "#4ade80"
+                          }
+                        />
+                        {stl.name}
                       </div>
                       <div style={{ fontSize: 11, color: "#94a3b8" }}>
                         人口 {stl.population}人 ・ ({stl.cx}, {stl.cy}) ・ {dist}m
@@ -820,8 +859,11 @@ export default function WorldBoxMapModal({
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 700 }}>
-                        {poi.badge} {poi.label}
+                      <div
+                        style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+                      >
+                        <WbIcon name={poi.badge} size={14} color={poi.color} />
+                        {poi.label}
                       </div>
                       <div style={{ fontSize: 11, color: "#94a3b8" }}>
                         ({poi.x}, {poi.y}) ・ 距離 {dist}m
@@ -836,7 +878,7 @@ export default function WorldBoxMapModal({
                           space: poi.space,
                           x: poi.x,
                           y: poi.y,
-                          label: `${poi.badge} ${poi.label}`,
+                          label: poi.label,
                           color: poi.color,
                         })
                       }
@@ -871,8 +913,11 @@ export default function WorldBoxMapModal({
                       }}
                     >
                       <div>
-                        <div style={{ fontWeight: 700 }}>
-                          {p.icon} {p.label}
+                        <div
+                          style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+                        >
+                          <WbIcon name={p.icon} size={14} color={p.color} />
+                          {p.label}
                         </div>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>
                           ({p.x}, {p.y}) ・ {dist}
@@ -888,7 +933,7 @@ export default function WorldBoxMapModal({
                               space: p.space,
                               x: p.x,
                               y: p.y,
-                              label: `${p.icon} ${p.label}`,
+                              label: p.label,
                               color: p.color,
                               pinId: p.id,
                             })
@@ -943,7 +988,7 @@ export default function WorldBoxMapModal({
                           onTrackTarget({
                             kind: "player",
                             presenceId: pl.id,
-                            label: `🏃 ${pl.name}`,
+                            label: pl.name,
                             color: "#4ade80",
                           })
                         }

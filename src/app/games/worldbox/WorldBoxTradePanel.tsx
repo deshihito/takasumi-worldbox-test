@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import { itemById } from "@/lib/worldbox/economy/items";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import type { CitizenContract, ContractCategory } from "@/lib/worldbox/social/contracts";
@@ -199,7 +200,9 @@ export default function WorldBoxTradePanel({
     <div className="wb-panel" style={overlayStyle} role="dialog" aria-label="P2P取引・契約ボード">
       <div style={stickyHeaderStyle}>
         <div>
-          <strong style={{ fontSize: 16 }}>🤝 P2P取引・市民契約ボード</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="handshake" size={16} color="#38bdf8" /> P2P取引・市民契約ボード
+          </strong>
           <div style={{ fontSize: 11, opacity: 0.75 }}>
             所持金: {balance !== null ? `¥${balance.toLocaleString()}` : "---"} ・ 接続中市民{" "}
             {players.length}人
@@ -211,21 +214,35 @@ export default function WorldBoxTradePanel({
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-        {[
-          ["trade", `直接取引 (${offers.filter((o) => o.status === "pending").length})`],
-          ["send", "⚡ MetroPay 送金"],
-          ["contracts", `📋 契約ボード (${contracts.filter((c) => c.status === "open").length})`],
-        ].map(([k, label]) => (
+        {(
+          [
+            [
+              "trade",
+              `直接取引 (${offers.filter((o) => o.status === "pending").length})`,
+              "handshake",
+            ],
+            ["send", "MetroPay 送金", "bolt"],
+            [
+              "contracts",
+              `契約ボード (${contracts.filter((c) => c.status === "open").length})`,
+              "contract",
+            ],
+          ] as const
+        ).map(([k, label, iconName]) => (
           <button
             key={k}
             type="button"
-            onClick={() => setTab(k as typeof tab)}
+            onClick={() => setTab(k)}
             style={{
               ...btn,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
               background: tab === k ? "rgba(56,189,248,0.24)" : "rgba(255,255,255,0.08)",
               borderColor: tab === k ? "#38bdf8" : "rgba(148,163,184,0.3)",
             }}
           >
+            <WbIcon name={iconName} size={13} color={tab === k ? "#38bdf8" : "#cbd5e1"} />
             {label}
           </button>
         ))}
@@ -384,9 +401,20 @@ export default function WorldBoxTradePanel({
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 700 }}>
-                      {incoming ? `📩 ${o.fromName} からの提案` : `📤 ${o.toName} へ送信`} [
-                      {o.status}]
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                      }}
+                    >
+                      <WbIcon
+                        name={incoming ? "inbox" : "send"}
+                        size={13}
+                        color={incoming ? "#38bdf8" : "#94a3b8"}
+                      />
+                      {incoming ? `${o.fromName} からの提案` : `${o.toName} へ送信`} [{o.status}]
                     </div>
                     <div style={{ fontSize: 11, opacity: 0.85 }}>
                       提供: ¥{o.offerCoins.toLocaleString()}{" "}
@@ -463,7 +491,9 @@ export default function WorldBoxTradePanel({
             gap: 10,
           }}
         >
-          <strong>⚡ MetroPay 即時P2P送金</strong>
+          <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <WbIcon name="bolt" size={14} color="#facc15" /> MetroPay 即時P2P送金
+          </strong>
           <select
             value={targetPid}
             onChange={(e) => setTargetPid(e.target.value)}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { WbIcon } from "./WbIcon";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import { itemById } from "@/lib/worldbox/economy/items";
 import { ItemSlot, ItemSlotGrid } from "./ItemSlotGrid";
@@ -191,8 +192,30 @@ export default function WorldBoxMachinePanel({
           <strong style={{ fontSize: 15, color: spec?.accentColor ?? "#fff" }}>
             {spec?.name ?? "産業マシン"}
           </strong>
-          <div style={{ fontSize: 11, color: "#94a3b8" }}>
-            座標 ({x}, {y}){machine?.poweredByNearby ? " / ⚡ 発電グリッド2x稼働中" : ""}
+          <div
+            style={{
+              fontSize: 11,
+              color: "#94a3b8",
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <span>
+              座標 ({x}, {y})
+            </span>
+            {machine?.poweredByNearby && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  color: "#facc15",
+                }}
+              >
+                / <WbIcon name="bolt" size={12} color="#facc15" /> 発電グリッド2x稼働中
+              </span>
+            )}
           </div>
         </div>
         <span style={{ flex: 1 }} />
@@ -209,7 +232,9 @@ export default function WorldBoxMachinePanel({
               <div
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
               >
-                <strong>🏪 24時間スマート自販機ストア</strong>
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <WbIcon name="shop" size={14} color="#38bdf8" /> 24時間スマート自販機ストア
+                </strong>
                 {isOwner && typeof machine.vendingSales === "number" && (
                   <span style={{ fontSize: 11, color: "#fbbf24" }}>
                     累計売上 ¥{machine.vendingSales.toLocaleString()}
@@ -419,7 +444,17 @@ export default function WorldBoxMachinePanel({
                 (machine.machineType === "custom_machine" &&
                   machine.blueprint?.module === "cnc")) && (
                 <div className="wb-mmo-card" style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>🏭 自動製造レシピ選択</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <WbIcon name="factory" size={13} color="#38bdf8" /> 自動製造レシピ選択
+                  </div>
                   <select
                     value={
                       machine.targetRecipeId ?? machine.blueprint?.targetRecipeId ?? "copper_wire"
@@ -448,21 +483,35 @@ export default function WorldBoxMachinePanel({
               {/* Logistics Sorter Pipeline Route Selector */}
               {machine.machineType === "logistics_sorter" && (
                 <div className="wb-mmo-card" style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>
-                    🔀 自動配送ルート設定（ベルトコンベア中継機で長距離接続可）
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <WbIcon name="swap" size={13} color="#818cf8" />{" "}
+                    自動配送ルート設定（ベルトコンベア中継機で長距離接続可）
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {[
-                      { id: "buffer", label: "📦 倉庫集約" },
-                      { id: "feed_cnc", label: "⚙️ CNC加工機へ自動供給" },
-                      { id: "feed_vending", label: "🏪 自販機へ自動補充" },
-                    ].map((opt) => (
+                    {(
+                      [
+                        { id: "buffer", label: "倉庫集約", icon: "package" },
+                        { id: "feed_cnc", label: "CNC加工機へ自動供給", icon: "gear" },
+                        { id: "feed_vending", label: "自販機へ自動補充", icon: "shop" },
+                      ] as const
+                    ).map((opt) => (
                       <button
                         key={opt.id}
                         type="button"
                         disabled={busy}
                         style={{
                           ...btn,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
                           background:
                             (machine.routeMode ?? "buffer") === opt.id
                               ? "#4f46e5"
@@ -479,7 +528,7 @@ export default function WorldBoxMachinePanel({
                           )
                         }
                       >
-                        {opt.label}
+                        <WbIcon name={opt.icon} size={12} color="#e2e8f0" /> {opt.label}
                       </button>
                     ))}
                   </div>
@@ -487,16 +536,34 @@ export default function WorldBoxMachinePanel({
               )}
 
               {machine.machineType === "conveyor_relay" && (
-                <div className="wb-mmo-card" style={{ fontSize: 12, color: "#99f6e4" }}>
-                  ⛓ 自動ベルトコンベア中継機：周囲5×5の生産機と物流ソーターの配管を多段接続します。
+                <div
+                  className="wb-mmo-card"
+                  style={{
+                    fontSize: 12,
+                    color: "#99f6e4",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <WbIcon name="link" size={13} color="#5eead4" />{" "}
+                  自動ベルトコンベア中継機：周囲5×5の生産機と物流ソーターの配管を多段接続します。
                 </div>
               )}
 
               {/* Custom Machine Blueprint Details */}
               {machine.machineType === "custom_machine" && machine.blueprint && (
                 <div className="wb-mmo-card" style={{ fontSize: 12 }}>
-                  <div style={{ fontWeight: 800, color: "#fb923c" }}>
-                    ⚙ {machine.blueprint.name}
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      color: "#fb923c",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <WbIcon name="gear" size={13} color="#fb923c" /> {machine.blueprint.name}
                   </div>
                   <div style={{ color: "#cbd5e1", marginTop: 2 }}>
                     筐体:{machine.blueprint.frame} / コア:{machine.blueprint.core} / 機能:
@@ -511,8 +578,17 @@ export default function WorldBoxMachinePanel({
                 (machine.machineType === "custom_machine" &&
                   machine.blueprint?.module === "cnc")) && (
                 <div className="wb-mmo-card" style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>
-                    📥 投入ホッパー（種または加工素材を投入）
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <WbIcon name="hopper" size={13} color="#22d3ee" />{" "}
+                    投入ホッパー（種または加工素材を投入）
                   </div>
                   {machine.inputs && Object.keys(machine.inputs).length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -575,8 +651,18 @@ export default function WorldBoxMachinePanel({
 
               {/* Output Buffer Grid */}
               <div>
-                <div style={{ fontSize: 11.5, color: "#94a3b8", marginBottom: 4 }}>
-                  📦 生産・回収済みバッファ（合計 {machine.buffered} 個）
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: "#94a3b8",
+                    marginBottom: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <WbIcon name="package" size={13} color="#94a3b8" /> 生産・回収済みバッファ（合計{" "}
+                  {machine.buffered} 個）
                 </div>
                 <ItemSlotGrid>
                   {Object.entries(machine.buffer).map(([itemId, count]) => (

@@ -192,7 +192,7 @@ export async function POST(request: Request) {
       await storePropertyDeed(deed);
       void pushMmoNews(
         "economy",
-        `🏘️ 不動産取得：${displayName} がチャンク ${deed.name} (${chunk.key}) の権利書を取得！`,
+        `[不動産取得] ${displayName} がチャンク ${deed.name} (${chunk.key}) の権利書を取得`,
         now,
       );
       return NextResponse.json(
@@ -265,7 +265,7 @@ export async function POST(request: Request) {
         lastIncomeAt: now,
       };
       await storeApartment(apt);
-      void pushMmoNews("economy", `🏢 ${displayName} が「${def.name}」を購入しました！`, now);
+      void pushMmoNews("economy", `[分譲購入] ${displayName} が「${def.name}」を購入`, now);
       return NextResponse.json(
         { ok: true, apartment: apt, balance: paid.balance },
         { headers: NO_STORE },

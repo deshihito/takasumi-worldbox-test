@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import { itemById } from "@/lib/worldbox/economy/items";
 import {
@@ -151,7 +152,7 @@ export default function WorldBoxPrisonPanel({
   const guideTo = (wp: { space: string; x: number; y: number; label: string }) => {
     if (onSetWaypoint) {
       onSetWaypoint(wp);
-      setMsg(`🧭 マップへコンパス案内をセット → ${wp.label}`);
+      setMsg(`[案内] マップへコンパス案内をセットしました: ${wp.label}`);
     }
   };
 
@@ -257,7 +258,9 @@ export default function WorldBoxPrisonPanel({
     <div className="wb-panel" style={overlayStyle}>
       <div style={stickyHeaderStyle}>
         <div>
-          <strong style={{ fontSize: 16 }}>⚖️ メトロ治安局・タカスミ中央刑務所</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="scale" size={16} color="#facc15" /> メトロ治安局・タカスミ中央刑務所
+          </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
             現地強盗セキュリティ突破・看守潜入脱獄・懲役ワークプレス・警察追跡逮捕
           </div>
@@ -283,12 +286,25 @@ export default function WorldBoxPrisonPanel({
             style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}
           >
             <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <WbIcon
+                  name={self.jailed ? "lock" : self.wantedLevel > 0 ? "siren" : "shield"}
+                  size={15}
+                  color={self.jailed ? "#fca5a5" : self.wantedLevel > 0 ? "#facc15" : "#4ade80"}
+                />
                 {self.jailed
-                  ? `🔒 収監中 — 囚人番号 ${self.inmateNumber}（房 ${self.cellId}）`
+                  ? `収監中 — 囚人番号 ${self.inmateNumber}（房 ${self.cellId}）`
                   : self.wantedLevel > 0
-                    ? `🚨 指名手配中 ${"★".repeat(self.wantedLevel)}（懸賞金 ¥${self.bounty.toLocaleString()}）`
-                    : "🛡 無罪・クリーンな市民"}
+                    ? `指名手配中 Lv${self.wantedLevel}（懸賞金 ¥${self.bounty.toLocaleString()}）`
+                    : "無罪・クリーンな市民"}
               </div>
               <div className="wb-mmo-num" style={{ fontSize: 12, color: "#cbd5e1", marginTop: 2 }}>
                 {self.jailed ? (
@@ -345,30 +361,36 @@ export default function WorldBoxPrisonPanel({
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "status" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           onClick={() => setTab("status")}
         >
-          {self?.jailed ? "⛓ 獄内生活・脱獄" : "⚖ 収監状況"}
+          <WbIcon name={self?.jailed ? "chain" : "scale"} size={12} color="#cbd5e1" />
+          {self?.jailed ? "獄内生活・脱獄" : "収監状況"}
         </button>
         <button
           type="button"
           className={`wb-mmo-tab is-warn ${tab === "crime" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           onClick={() => setTab("crime")}
         >
-          💣 現地強盗・犯行
+          <WbIcon name="bomb" size={12} color="#fca5a5" /> 現地強盗・犯行
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "police" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           onClick={() => setTab("police")}
         >
-          🚓 治安局 ({(data?.wanted.length ?? 0) + (data?.npcSuspects.length ?? 0)})
+          <WbIcon name="police" size={12} color="#38bdf8" /> 治安局 (
+          {(data?.wanted.length ?? 0) + (data?.npcSuspects.length ?? 0)})
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "inmates" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           onClick={() => setTab("inmates")}
         >
-          🤝 面会 ({data?.inmates.length ?? 0})
+          <WbIcon name="handshake" size={12} color="#cbd5e1" /> 面会 ({data?.inmates.length ?? 0})
         </button>
       </div>
 
@@ -394,9 +416,10 @@ export default function WorldBoxPrisonPanel({
             <button
               type="button"
               className="wb-mmo-btn wb-mmo-btn-cyan"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
               onClick={() => guideTo(suggestedWp)}
             >
-              📍 現場をマップ案内
+              <WbIcon name="compass" size={12} color="#cffafe" /> 現場をマップ案内
             </button>
           )}
         </div>
@@ -415,7 +438,16 @@ export default function WorldBoxPrisonPanel({
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong style={{ color: "#38bdf8" }}>🔐 {activeChallenge.hintLabel}</strong>
+            <strong
+              style={{
+                color: "#38bdf8",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <WbIcon name="keyhole" size={14} color="#38bdf8" /> {activeChallenge.hintLabel}
+            </strong>
             <button type="button" className="wb-mmo-btn" onClick={() => setActiveChallenge(null)}>
               中止
             </button>
@@ -460,6 +492,7 @@ export default function WorldBoxPrisonPanel({
                 type="button"
                 disabled={busy}
                 className="wb-mmo-btn wb-mmo-btn-danger"
+                style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                 onClick={() => {
                   const ch = activeChallenge;
                   setActiveChallenge(null);
@@ -472,9 +505,9 @@ export default function WorldBoxPrisonPanel({
                       if (!r) return;
                       setMsg(
                         r.escaped
-                          ? "🕳 ピッキング＆潜入成功！郊外へ脱獄逃亡しました！"
+                          ? "[脱獄成功] ピッキング＆潜入成功！郊外へ脱獄逃亡しました！"
                           : r.caughtByGuard
-                            ? `🚨 看守の巡回ライトに発見され独房へ戻されました！（+${r.penaltySec}秒）`
+                            ? `[発覚] 看守の巡回ライトに発見され独房へ戻されました（+${r.penaltySec}秒）`
                             : `ピンの解除に失敗し見回りに捕まりました（+${r.penaltySec}秒）`,
                       );
                     });
@@ -488,16 +521,19 @@ export default function WorldBoxPrisonPanel({
                       if (!r) return;
                       setMsg(
                         r.success
-                          ? `💰 金庫・認証突破成功！ +¥${Number(r.reward ?? 0).toLocaleString()} 奪取！`
-                          : "🚨 警報作動！現行犯で刑務所へ護送されました！",
+                          ? `[突破成功] 金庫・認証突破！ +¥${Number(r.reward ?? 0).toLocaleString()} 奪取！`
+                          : "[警報] 警報作動！現行犯で刑務所へ護送されました！",
                       );
                     });
                   }
                 }}
               >
-                {activeChallenge.kind === "jailbreak"
-                  ? "🕳 ピン解除して脱獄！"
-                  : "⚡ 認証突破・実行！"}
+                <WbIcon
+                  name={activeChallenge.kind === "jailbreak" ? "vent" : "bolt"}
+                  size={13}
+                  color="#fecaca"
+                />
+                {activeChallenge.kind === "jailbreak" ? "ピン解除して脱獄！" : "認証突破・実行！"}
               </button>
             )}
           </div>
@@ -519,7 +555,10 @@ export default function WorldBoxPrisonPanel({
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 800 }}>⚒ 東棟懲役ワークプレス工場 (35, 9)</div>
+                    <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                      <WbIcon name="anvil" size={14} color="#4ade80" /> 東棟懲役ワークプレス工場
+                      (35, 9)
+                    </div>
                     <div style={{ fontSize: 11, color: "#94a3b8" }}>
                       工場のプレス機前でのみ労役可能（現在:{" "}
                       {workDist !== null ? `${workDist.toFixed(1)}m` : "屋外"}）
@@ -529,9 +568,10 @@ export default function WorldBoxPrisonPanel({
                     <button
                       type="button"
                       className="wb-mmo-btn wb-mmo-btn-cyan"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={() => guideTo(data.prisonSpots.work)}
                     >
-                      📍 工場へ案内
+                      <WbIcon name="compass" size={12} color="#cffafe" /> 工場へ案内
                     </button>
                   )}
                 </div>
@@ -540,8 +580,18 @@ export default function WorldBoxPrisonPanel({
                 <div
                   style={{ padding: "6px 8px", borderRadius: 8, background: "rgba(15,23,42,0.7)" }}
                 >
-                  <div style={{ fontSize: 11, color: "#cbd5e1", marginBottom: 4 }}>
-                    ⚡ プレス打刻タイミングゲージ（緑帯で押すと報酬・減刑 1.35x）
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#cbd5e1",
+                      marginBottom: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <WbIcon name="bolt" size={12} color="#facc15" />{" "}
+                    プレス打刻タイミングゲージ（緑帯で押すと報酬・減刑 1.35x）
                   </div>
                   <div
                     style={{
@@ -610,7 +660,7 @@ export default function WorldBoxPrisonPanel({
                               setMsg(
                                 r.released
                                   ? "刑期を全うして出所しました！"
-                                  : `作業完了 (${timingQuality > 1 ? "⚡PERFECT 1.35x" : "通常"})！ +¥${Number(r.wage ?? 0)} / 刑期 -${Number(r.reducedSec ?? 0)}秒`,
+                                  : `作業完了 (${timingQuality > 1 ? "PERFECT 1.35x" : "通常"})！ +¥${Number(r.wage ?? 0)} / 刑期 -${Number(r.reducedSec ?? 0)}秒`,
                               );
                             }
                           });
@@ -631,7 +681,9 @@ export default function WorldBoxPrisonPanel({
                 }}
               >
                 <div className="wb-mmo-card" style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontWeight: 800 }}>💳 保釈デスク手続き (25, 26)</div>
+                  <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                    <WbIcon name="card" size={14} color="#fbbf24" /> 保釈デスク手続き (25, 26)
+                  </div>
                   <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
                     面会室の申請デスク前で保釈金を納付できます（現在{" "}
                     {deskDist !== null ? `${deskDist.toFixed(1)}m` : "---"}）。
@@ -641,9 +693,10 @@ export default function WorldBoxPrisonPanel({
                       <button
                         type="button"
                         className="wb-mmo-btn"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                         onClick={() => guideTo(data.prisonSpots.desk)}
                       >
-                        📍 デスク案内
+                        <WbIcon name="compass" size={12} color="#38bdf8" /> デスク案内
                       </button>
                     )}
                     <button
@@ -662,20 +715,26 @@ export default function WorldBoxPrisonPanel({
                 </div>
 
                 <div className="wb-mmo-card" style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontWeight: 800 }}>🕳 南西ダクトステルス脱獄 (4, 27)</div>
+                  <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                    <WbIcon name="vent" size={14} color="#f87171" /> 南西ダクトステルス脱獄 (4, 27)
+                  </div>
                   <div
                     style={{
                       padding: "4px 8px",
                       borderRadius: 6,
                       fontSize: 11,
                       fontWeight: 800,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
                       background: guardSweeping ? "rgba(220,38,38,0.28)" : "rgba(22,163,74,0.28)",
                       color: guardSweeping ? "#fca5a5" : "#86efac",
                     }}
                   >
+                    <WbIcon name={guardSweeping ? "siren" : "check"} size={12} />
                     {guardSweeping
-                      ? `🚨 看守が換気口付近を巡回中！（あと ${Math.ceil((0.3 - guardPhase) * 16)}秒待機）`
-                      : `🟢 看守は別区画へ移動（潜入チャンスあと ${Math.ceil((1 - guardPhase) * 16)}秒）`}
+                      ? `看守が換気口付近を巡回中！（あと ${Math.ceil((0.3 - guardPhase) * 16)}秒待機）`
+                      : `看守は別区画へ移動（潜入チャンスあと ${Math.ceil((1 - guardPhase) * 16)}秒）`}
                   </div>
                   <div style={{ fontSize: 11, color: "#cbd5e1" }}>
                     換気口まで {ventDist !== null ? `${ventDist.toFixed(1)}m` : "---"} ・
@@ -686,18 +745,20 @@ export default function WorldBoxPrisonPanel({
                       <button
                         type="button"
                         className="wb-mmo-btn"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                         onClick={() => guideTo(data.prisonSpots.escape)}
                       >
-                        📍 換気口ルート案内
+                        <WbIcon name="compass" size={12} color="#38bdf8" /> 換気口ルート案内
                       </button>
                     )}
                     <button
                       type="button"
                       disabled={busy}
                       className="wb-mmo-btn wb-mmo-btn-danger"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={() => void startSecurityChallenge("jailbreak")}
                     >
-                      🔓 ダクト解錠に挑戦
+                      <WbIcon name="unlock" size={12} color="#fecaca" /> ダクト解錠に挑戦
                     </button>
                   </div>
                 </div>
@@ -711,10 +772,24 @@ export default function WorldBoxPrisonPanel({
                 style={{ textAlign: "left", cursor: "pointer" }}
                 onClick={() => setTab("crime")}
               >
-                <div style={{ fontWeight: 800, color: "#fca5a5" }}>💣 STEP 1 現地犯行</div>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "#fca5a5",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <WbIcon name="bomb" size={13} color="#fca5a5" /> STEP 1 現地犯行
+                </div>
                 <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  <span className="wb-mmo-stat-chip">🏦 金庫/ATM</span>
-                  <span className="wb-mmo-stat-chip">🔐 PIN解除</span>
+                  <span className="wb-mmo-stat-chip">
+                    <WbIcon name="bank" size={11} color="#facc15" /> 金庫/ATM
+                  </span>
+                  <span className="wb-mmo-stat-chip">
+                    <WbIcon name="keyhole" size={11} color="#38bdf8" /> PIN解除
+                  </span>
                 </div>
               </button>
               <button
@@ -723,10 +798,22 @@ export default function WorldBoxPrisonPanel({
                 style={{ textAlign: "left", cursor: "pointer" }}
                 onClick={() => setTab("police")}
               >
-                <div style={{ fontWeight: 800, color: "#38bdf8" }}>🚓 STEP 2 追跡・逮捕</div>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "#38bdf8",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <WbIcon name="police" size={13} color="#38bdf8" /> STEP 2 追跡・逮捕
+                </div>
                 <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
                   <span className="wb-mmo-stat-chip">距離 &lt;= 6.5m</span>
-                  <span className="wb-mmo-stat-chip">★ 賞金確保</span>
+                  <span className="wb-mmo-stat-chip">
+                    <WbIcon name="coins" size={11} color="#fbbf24" /> 賞金確保
+                  </span>
                 </div>
               </button>
               <button
@@ -735,10 +822,24 @@ export default function WorldBoxPrisonPanel({
                 style={{ textAlign: "left", cursor: "pointer" }}
                 onClick={() => setTab("inmates")}
               >
-                <div style={{ fontWeight: 800, color: "#4ade80" }}>⚒ STEP 3 懲役・脱獄</div>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "#4ade80",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <WbIcon name="anvil" size={13} color="#4ade80" /> STEP 3 懲役・脱獄
+                </div>
                 <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  <span className="wb-mmo-stat-chip">🏭 (35,9)工場</span>
-                  <span className="wb-mmo-stat-chip">🕳 (4,27)ダクト</span>
+                  <span className="wb-mmo-stat-chip">
+                    <WbIcon name="factory" size={11} color="#4ade80" /> (35,9)工場
+                  </span>
+                  <span className="wb-mmo-stat-chip">
+                    <WbIcon name="vent" size={11} color="#f87171" /> (4,27)ダクト
+                  </span>
                 </div>
               </button>
             </div>
@@ -746,7 +847,17 @@ export default function WorldBoxPrisonPanel({
 
           {self.careLogs.length > 0 && (
             <div className="wb-mmo-card">
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>📦 差し入れ受取履歴</div>
+              <div
+                style={{
+                  fontWeight: 700,
+                  marginBottom: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <WbIcon name="package" size={13} color="#38bdf8" /> 差し入れ受取履歴
+              </div>
               {self.careLogs.map((c, idx) => (
                 <div key={idx} style={{ fontSize: 11.5, color: "#cbd5e1" }}>
                   ・{c.fromName} より: {c.message}
@@ -761,10 +872,10 @@ export default function WorldBoxPrisonPanel({
         <div style={{ display: "grid", gap: 8 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <span className="wb-mmo-stat-chip" style={{ borderColor: "#f87171", color: "#fecaca" }}>
-              📍 現場接近必須 (&lt;= 4.5m)
+              <WbIcon name="pin" size={11} color="#f87171" /> 現場接近必須 (&lt;= 4.5m)
             </span>
             <span className="wb-mmo-stat-chip" style={{ borderColor: "#fbbf24", color: "#fef08a" }}>
-              🔐 金庫/ATM: 認証シーケンス挑戦
+              <WbIcon name="keyhole" size={11} color="#fbbf24" /> 金庫/ATM: 認証シーケンス挑戦
             </span>
           </div>
           {data.crimes.map((crime) => {
@@ -797,15 +908,17 @@ export default function WorldBoxPrisonPanel({
                     <button
                       type="button"
                       className="wb-mmo-btn wb-mmo-btn-cyan"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={() => guideTo(closest)}
                     >
-                      📍 現場案内
+                      <WbIcon name="compass" size={12} color="#cffafe" /> 現場案内
                     </button>
                   )}
                   <button
                     type="button"
                     disabled={busy || Boolean(self?.jailed)}
                     className="wb-mmo-btn wb-mmo-btn-danger"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                     onClick={() => {
                       if (requiresPin) {
                         void startSecurityChallenge(crime.id);
@@ -821,7 +934,13 @@ export default function WorldBoxPrisonPanel({
                       });
                     }}
                   >
-                    {requiresPin ? "🔐 ダイヤル解除" : "決行"}
+                    {requiresPin ? (
+                      <>
+                        <WbIcon name="keyhole" size={12} color="#fecaca" /> ダイヤル解除
+                      </>
+                    ) : (
+                      "決行"
+                    )}
                   </button>
                 </div>
               </div>
@@ -833,8 +952,17 @@ export default function WorldBoxPrisonPanel({
       {tab === "police" && data && (
         <div style={{ display: "grid", gap: 10 }}>
           <div className="wb-mmo-card">
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>
-              🚨 指名手配プレイヤー {data.isPolice ? "（警察職ボーナス適用中）" : ""}
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <WbIcon name="siren" size={14} color="#f87171" /> 指名手配プレイヤー{" "}
+              {data.isPolice ? "（警察職ボーナス適用中）" : ""}
             </div>
             {data.wanted.length === 0 ? (
               <div style={{ fontSize: 12, color: "#94a3b8" }}>
@@ -853,8 +981,14 @@ export default function WorldBoxPrisonPanel({
                   }}
                 >
                   <div>
-                    <strong>{w.name}</strong>{" "}
-                    <span style={{ color: "#f87171" }}>{"★".repeat(w.wantedLevel)}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <strong>{w.name}</strong>
+                      <span style={{ display: "inline-flex", gap: 1, color: "#f87171" }}>
+                        {Array.from({ length: Math.min(5, w.wantedLevel) }).map((_, idx) => (
+                          <WbIcon key={idx} name="star" size={11} color="#f87171" />
+                        ))}
+                      </span>
+                    </div>
                     <div style={{ fontSize: 11, color: "#fbbf24" }}>
                       懸賞金 ¥{w.bounty.toLocaleString()}
                     </div>
@@ -884,8 +1018,17 @@ export default function WorldBoxPrisonPanel({
           </div>
 
           <div className="wb-mmo-card">
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>
-              📜 メトロ警察・時限手配容疑者（NPC追捕依頼）
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <WbIcon name="scroll" size={14} color="#38bdf8" />{" "}
+              メトロ警察・時限手配容疑者（NPC追捕依頼）
             </div>
             <div style={{ display: "grid", gap: 6 }}>
               {data.npcSuspects.map((s) => (
@@ -902,8 +1045,13 @@ export default function WorldBoxPrisonPanel({
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 700 }}>
-                      {s.name} <span style={{ color: "#f87171" }}>{"★".repeat(s.wantedLevel)}</span>
+                    <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
+                      {s.name}
+                      <span style={{ display: "inline-flex", gap: 1, color: "#f87171" }}>
+                        {Array.from({ length: Math.min(5, s.wantedLevel) }).map((_, idx) => (
+                          <WbIcon key={idx} name="star" size={11} color="#f87171" />
+                        ))}
+                      </span>
                     </div>
                     <div style={{ fontSize: 11, color: "#94a3b8" }}>
                       {s.crime} / 目撃地点: {s.district}
@@ -934,8 +1082,17 @@ export default function WorldBoxPrisonPanel({
       {tab === "inmates" && data && (
         <div style={{ display: "grid", gap: 10 }}>
           <div className="wb-mmo-card">
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>
-              🏛 現在の収監者一覧 ({data.inmates.length}名)
+            <div
+              style={{
+                fontWeight: 800,
+                marginBottom: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <WbIcon name="gov" size={14} color="#cbd5e1" /> 現在の収監者一覧 (
+              {data.inmates.length}名)
             </div>
             {data.inmates.length === 0 ? (
               <div style={{ fontSize: 12, color: "#94a3b8" }}>
@@ -984,8 +1141,16 @@ export default function WorldBoxPrisonPanel({
 
           {data.inmates.length > 0 && inventoryFoodAndTools.length > 0 && (
             <div className="wb-mmo-card">
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>
-                🎁 面会・アイテム差し入れ（密輸も可）
+              <div
+                style={{
+                  fontWeight: 800,
+                  marginBottom: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <WbIcon name="gift" size={14} color="#38bdf8" /> 面会・アイテム差し入れ（密輸も可）
               </div>
               <div style={{ display: "grid", gap: 8 }}>
                 <select

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import type {
   ApartmentOwnership,
   ApartmentTierId,
@@ -142,7 +143,9 @@ export default function WorldBoxRealEstatePanel({
     >
       <div style={stickyHeaderStyle}>
         <div>
-          <strong style={{ fontSize: 16 }}>🏘️ メトロ不動産・分譲マンション局</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="town" size={16} color="#38bdf8" /> メトロ不動産・分譲マンション局
+          </strong>
           <div style={{ fontSize: 11, opacity: 0.78 }}>
             銀行与信担保に自動連動 ・ 保有区画 {data?.myDeeds.length ?? 0} / 物件{" "}
             {data?.myApartments.length ?? 0}
@@ -157,19 +160,28 @@ export default function WorldBoxRealEstatePanel({
         <button
           type="button"
           onClick={() => setTab("deeds")}
-          style={{ ...btn, borderColor: tab === "deeds" ? "#38bdf8" : "rgba(148,163,184,0.3)" }}
+          style={{
+            ...btn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            borderColor: tab === "deeds" ? "#38bdf8" : "rgba(148,163,184,0.3)",
+          }}
         >
-          📍 16×16 土地権利書
+          <WbIcon name="pin" size={13} color="#4ade80" /> 16×16 土地権利書
         </button>
         <button
           type="button"
           onClick={() => setTab("apartments")}
           style={{
             ...btn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
             borderColor: tab === "apartments" ? "#38bdf8" : "rgba(148,163,184,0.3)",
           }}
         >
-          🏢 分譲マンション・オフィス
+          <WbIcon name="building" size={13} color="#38bdf8" /> 分譲マンション・オフィス
         </button>
       </div>
 
@@ -365,7 +377,13 @@ export default function WorldBoxRealEstatePanel({
                   <button
                     type="button"
                     disabled={busy}
-                    style={{ ...btn, background: "#16a34a" }}
+                    style={{
+                      ...btn,
+                      background: "#16a34a",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
                     onClick={() =>
                       callAction(
                         { action: "enter_apartment", unitId: apt.unitId },
@@ -373,7 +391,7 @@ export default function WorldBoxRealEstatePanel({
                       )
                     }
                   >
-                    🚪 入室する
+                    <WbIcon name="door" size={13} color="#dcfce7" /> 入室する
                   </button>
                   <button
                     type="button"

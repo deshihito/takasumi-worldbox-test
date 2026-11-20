@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import type {
   CityGovernanceState,
   CityPolicies,
@@ -121,7 +122,9 @@ export default function WorldBoxGovernancePanel({
     <div className="wb-panel" style={overlayStyle} role="dialog" aria-label="市政庁・裁判所">
       <div style={stickyHeaderStyle}>
         <div>
-          <strong style={{ fontSize: 16 }}>🏛️ タカスミ市政庁・公開法廷</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="gov" size={16} color="#fbbf24" /> タカスミ市政庁・公開法廷
+          </strong>
           <div style={{ fontSize: 11, opacity: 0.78 }}>
             市長: {data?.gov.mayorName ?? "---"} ・ 市財源 ¥
             {(data?.gov.treasuryBalance ?? 0).toLocaleString()}
@@ -136,16 +139,29 @@ export default function WorldBoxGovernancePanel({
         <button
           type="button"
           onClick={() => setTab("city")}
-          style={{ ...btn, borderColor: tab === "city" ? "#38bdf8" : "rgba(148,163,184,0.3)" }}
+          style={{
+            ...btn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            borderColor: tab === "city" ? "#38bdf8" : "rgba(148,163,184,0.3)",
+          }}
         >
-          🗳️ 市長選挙・税制＆交付金
+          <WbIcon name="vote" size={14} color="#38bdf8" /> 市長選挙・税制＆交付金
         </button>
         <button
           type="button"
           onClick={() => setTab("court")}
-          style={{ ...btn, borderColor: tab === "court" ? "#38bdf8" : "rgba(148,163,184,0.3)" }}
+          style={{
+            ...btn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            borderColor: tab === "court" ? "#38bdf8" : "rgba(148,163,184,0.3)",
+          }}
         >
-          ⚖️ 公開陪審員裁判 ({data?.trials.filter((t) => t.status === "open").length ?? 0})
+          <WbIcon name="scale" size={14} color="#c084fc" /> 公開陪審員裁判 (
+          {data?.trials.filter((t) => t.status === "open").length ?? 0})
         </button>
       </div>
 
@@ -215,7 +231,9 @@ export default function WorldBoxGovernancePanel({
                 gap: 8,
               }}
             >
-              <strong>👑 市長権限：政策パラメータ変更</strong>
+              <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <WbIcon name="crown" size={14} color="#fbbf24" /> 市長権限：政策パラメータ変更
+              </strong>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <label style={{ fontSize: 11 }}>
                   所得税率 (0.05〜0.20)
@@ -328,6 +346,9 @@ export default function WorldBoxGovernancePanel({
                   disabled={busy}
                   style={{
                     ...btn,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     background:
                       data.selfVotedCandidate === cand.ownerKey
                         ? "#15803d"
@@ -340,7 +361,13 @@ export default function WorldBoxGovernancePanel({
                     )
                   }
                 >
-                  {data.selfVotedCandidate === cand.ownerKey ? "投票済 ✓" : "投票"}
+                  {data.selfVotedCandidate === cand.ownerKey ? (
+                    <>
+                      投票済 <WbIcon name="check" size={12} color="#86efac" />
+                    </>
+                  ) : (
+                    "投票"
+                  )}
                 </button>
               </div>
             ))}
@@ -354,7 +381,14 @@ export default function WorldBoxGovernancePanel({
             <button
               type="button"
               disabled={busy}
-              style={{ ...btn, background: "#7c3aed" }}
+              style={{
+                ...btn,
+                background: "#7c3aed",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
               onClick={() =>
                 callGov(
                   { action: "open_trial" },
@@ -362,7 +396,8 @@ export default function WorldBoxGovernancePanel({
                 )
               }
             >
-              ⚖️ 公開陪審員裁判を開廷して控訴する (申請料 ¥300)
+              <WbIcon name="scale" size={14} color="#f5f3ff" /> 公開陪審員裁判を開廷して控訴する
+              (申請料 ¥300)
             </button>
           )}
           {data.trials.length === 0 && (

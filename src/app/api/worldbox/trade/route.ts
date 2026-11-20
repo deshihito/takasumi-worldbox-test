@@ -251,7 +251,7 @@ export async function POST(request: Request) {
         await payOwnerKey(offer.fromKey, offer.requestCoins, "p2p_trade");
       }
 
-      void pushMmoNews("economy", `🤝 P2P取引成立：${offer.fromName} ⇄ ${offer.toName}`, now);
+      void pushMmoNews("economy", `[P2P取引] ${offer.fromName} / ${offer.toName} 取引成立`, now);
 
       return NextResponse.json(
         {

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import type { VehicleItemId, VehicleSpec } from "@/lib/worldbox/player/vehicles";
 import type { DailyMissionDef, MmoNewsItem } from "@/lib/worldbox/social/mmo-events";
@@ -214,7 +215,9 @@ export default function WorldBoxMetroPanel({
     <div className="wb-panel" style={overlayStyle}>
       <div style={stickyHeaderStyle}>
         <div>
-          <strong style={{ fontSize: 16 }}>📱 TAKASUMI METRO OS</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="phone" size={16} color="#38bdf8" /> TAKASUMI METRO OS
+          </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
             都市アプリ・メトロSNS・乗り物ガレージ・法人求人・経済ニュース
           </div>
@@ -228,37 +231,44 @@ export default function WorldBoxMetroPanel({
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "guide" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
           onClick={() => setTab("guide")}
         >
-          🌆 アプリハブ
+          <WbIcon name="hub" size={13} color={tab === "guide" ? "#38bdf8" : "#cbd5e1"} /> アプリハブ
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "sns" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
           onClick={() => setTab("sns")}
         >
-          💬 SNS・求人 ({posts.length})
+          <WbIcon name="chat" size={13} color={tab === "sns" ? "#38bdf8" : "#cbd5e1"} /> SNS・求人 (
+          {posts.length})
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "garage" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
           onClick={() => setTab("garage")}
         >
-          🚗 ガレージ ({ownedVehicles.length})
+          <WbIcon name="car" size={13} color={tab === "garage" ? "#38bdf8" : "#cbd5e1"} /> ガレージ
+          ({ownedVehicles.length})
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "missions" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
           onClick={() => setTab("missions")}
         >
-          🎯 任務
+          <WbIcon name="target" size={13} color={tab === "missions" ? "#38bdf8" : "#cbd5e1"} /> 任務
         </button>
         <button
           type="button"
           className={`wb-mmo-tab ${tab === "news" ? "is-active" : ""}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
           onClick={() => setTab("news")}
         >
-          📰 速報
+          <WbIcon name="news" size={13} color={tab === "news" ? "#38bdf8" : "#cbd5e1"} /> 速報
         </button>
       </div>
 
@@ -286,53 +296,73 @@ export default function WorldBoxMetroPanel({
             gap: 8,
           }}
         >
-          {[
-            {
-              key: "jobs" as const,
-              title: "💼 仕事・キャリア",
-              desc: "カフェ運営・実地配達・パトロール",
-            },
-            {
-              key: "trade" as const,
-              title: "🤝 取引・契約",
-              desc: "P2P直取引・送金・市民契約ボード",
-            },
-            {
-              key: "realestate" as const,
-              title: "🏘️ 不動産・住居",
-              desc: "16×16土地権利書・分譲マンション",
-            },
-            {
-              key: "governance" as const,
-              title: "🏛️ 市政庁・法廷",
-              desc: "市長選挙・政策減税・公開陪審裁判",
-            },
-            {
-              key: "engineering" as const,
-              title: "⚙️ 機械制作ラボ",
-              desc: "10種マシン・乗り物・カスタム設計",
-            },
-            {
-              key: "prison" as const,
-              title: "⚖️ 治安局・刑務所",
-              desc: "現地強盗・逮捕・懲役作業・ダクト脱獄",
-            },
-            {
-              key: "company" as const,
-              title: "🏢 起業・会社経営",
-              desc: "法人設立・IPO株・社員募集",
-            },
-            {
-              key: "market" as const,
-              title: "📦 コモディティ市場",
-              desc: "板取引オーダーブック・素材価格",
-            },
-            {
-              key: "finance" as const,
-              title: "📈 銀行・FX・予言",
-              desc: "不動産担保融資・FX為替・未来市場",
-            },
-          ].map((card) => (
+          {(
+            [
+              {
+                key: "jobs",
+                icon: "briefcase",
+                color: "#38bdf8",
+                title: "仕事・キャリア",
+                desc: "カフェ運営・実地配達・パトロール",
+              },
+              {
+                key: "trade",
+                icon: "handshake",
+                color: "#22d3ee",
+                title: "取引・契約",
+                desc: "P2P直取引・送金・市民契約ボード",
+              },
+              {
+                key: "realestate",
+                icon: "town",
+                color: "#4ade80",
+                title: "不動産・住居",
+                desc: "16×16土地権利書・分譲マンション",
+              },
+              {
+                key: "governance",
+                icon: "gov",
+                color: "#fbbf24",
+                title: "市政庁・法廷",
+                desc: "市長選挙・政策減税・公開陪審裁判",
+              },
+              {
+                key: "engineering",
+                icon: "gear",
+                color: "#94a3b8",
+                title: "機械制作ラボ",
+                desc: "10種マシン・乗り物・カスタム設計",
+              },
+              {
+                key: "prison",
+                icon: "scale",
+                color: "#f87171",
+                title: "治安局・刑務所",
+                desc: "現地強盗・逮捕・懲役作業・ダクト脱獄",
+              },
+              {
+                key: "company",
+                icon: "building",
+                color: "#818cf8",
+                title: "起業・会社経営",
+                desc: "法人設立・IPO株・社員募集",
+              },
+              {
+                key: "market",
+                icon: "package",
+                color: "#fb923c",
+                title: "コモディティ市場",
+                desc: "板取引オーダーブック・素材価格",
+              },
+              {
+                key: "finance",
+                icon: "chart",
+                color: "#34d399",
+                title: "銀行・FX・予言",
+                desc: "不動産担保融資・FX為替・未来市場",
+              },
+            ] as const
+          ).map((card) => (
             <button
               key={card.key}
               type="button"
@@ -343,7 +373,18 @@ export default function WorldBoxMetroPanel({
                 onOpenPanel(card.key);
               }}
             >
-              <div style={{ fontWeight: 800, fontSize: 13 }}>{card.title}</div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <WbIcon name={card.icon} size={14} color={card.color} />
+                {card.title}
+              </div>
               <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 3 }}>{card.desc}</div>
             </button>
           ))}
@@ -417,15 +458,17 @@ export default function WorldBoxMetroPanel({
                     type="button"
                     disabled={busy}
                     className="wb-mmo-btn"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                     onClick={() => void actSns({ action: "like", postId: p.id })}
                   >
-                    ♥ {p.likes.length}
+                    <WbIcon name="heart" size={13} color="#fb7185" /> {p.likes.length}
                   </button>
                   {p.authorKey !== selfKey && (
                     <button
                       type="button"
                       disabled={busy}
                       className="wb-mmo-btn wb-mmo-btn-amber"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={() =>
                         void actSns(
                           { action: "tip", postId: p.id, amount: 100 },
@@ -433,7 +476,7 @@ export default function WorldBoxMetroPanel({
                         )
                       }
                     >
-                      💸 ¥100投げ銭
+                      <WbIcon name="coins" size={13} color="#fde68a" /> ¥100投げ銭
                     </button>
                   )}
                 </div>
@@ -443,7 +486,9 @@ export default function WorldBoxMetroPanel({
 
           {companies.length > 0 && (
             <div className="wb-mmo-card" style={{ display: "grid", gap: 6 }}>
-              <strong>🏢 法人メンバー募集中企業一覧</strong>
+              <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <WbIcon name="building" size={14} color="#818cf8" /> 法人メンバー募集中企業一覧
+              </strong>
               {companies.map((c) => (
                 <div
                   key={c.id}
@@ -480,10 +525,18 @@ export default function WorldBoxMetroPanel({
       {tab === "garage" && (
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <span className="wb-mmo-stat-chip">🚗 最大速度 9.8</span>
-            <span className="wb-mmo-stat-chip">🛣️ 舗装道路 +6%</span>
-            <span className="wb-mmo-stat-chip">📦 配達報酬ボーナス</span>
-            <span className="wb-mmo-stat-chip">🚨 サイレン懸賞+20%</span>
+            <span className="wb-mmo-stat-chip">
+              <WbIcon name="car" size={12} color="#38bdf8" /> 最大速度 9.8
+            </span>
+            <span className="wb-mmo-stat-chip">
+              <WbIcon name="road" size={12} color="#94a3b8" /> 舗装道路 +6%
+            </span>
+            <span className="wb-mmo-stat-chip">
+              <WbIcon name="package" size={12} color="#fb923c" /> 配達報酬ボーナス
+            </span>
+            <span className="wb-mmo-stat-chip">
+              <WbIcon name="siren" size={12} color="#f87171" /> サイレン懸賞+20%
+            </span>
           </div>
 
           {ownedVehicles.length === 0 ? (
@@ -535,7 +588,7 @@ export default function WorldBoxMetroPanel({
                           className="wb-mmo-stat-chip"
                           style={{ borderColor: "#f87171", color: "#fecaca" }}
                         >
-                          🚨 懸賞 +20%
+                          <WbIcon name="siren" size={11} color="#f87171" /> 懸賞 +20%
                         </span>
                       )}
                     </div>

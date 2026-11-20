@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { WbIcon } from "./WbIcon";
 import { itemById, type ItemDef } from "@/lib/worldbox/economy/items";
 import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import {
@@ -151,7 +152,9 @@ export default function WorldBoxEngineeringPanel({
         }}
       >
         <div>
-          <strong style={{ fontSize: 16 }}>⚙️ 機械制作・メトロエンジニアラボ</strong>
+          <strong style={{ fontSize: 16, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <WbIcon name="gear" size={16} color="#38bdf8" /> 機械制作・メトロエンジニアラボ
+          </strong>
           <div style={{ fontSize: 11, color: "#94a3b8" }}>
             電子部品の加工・10種の産業マシン・乗り物・特注マシン設計
           </div>
@@ -291,8 +294,9 @@ export default function WorldBoxEngineeringPanel({
       {tab === "custom" && data && (
         <div style={{ display: "grid", gap: 10 }}>
           <div className="wb-mmo-card" style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 800 }}>
-              🔧 特注カスタムマシン設計図（ワールドに設置して稼働）
+            <div style={{ fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <WbIcon name="wrench" size={14} color="#38bdf8" />{" "}
+              特注カスタムマシン設計図（ワールドに設置して稼働）
             </div>
             <label style={{ display: "grid", gap: 4, fontSize: 12 }}>
               <span>マシン愛称</span>
