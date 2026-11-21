@@ -44,7 +44,6 @@ import {
   isEconomyEnabled,
 } from "@/lib/worldbox/economy/economy-bridge-online";
 import { addMasteryXp, MINER_BONUS_CHANCE } from "@/lib/worldbox/player/roles";
-import { removeItem } from "@/lib/worldbox/player/profile";
 import {
   isInstancesEnabled,
   loadInstanceState,

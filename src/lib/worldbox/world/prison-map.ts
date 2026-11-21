@@ -1,4 +1,4 @@
-import { T_GRASS, T_ROCK, tilesSource, type TopDownMap } from "./mapgen";
+import { T_GRASS, T_ROCK, tilesSource } from "./mapgen";
 import {
   L_CHECK,
   L_CONCRETE,

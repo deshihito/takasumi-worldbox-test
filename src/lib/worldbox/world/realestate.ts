@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, T_GRASS, T_ROCK, tilesSource, type TopDownMap } from "./mapgen";
+import { CHUNK_SIZE, T_GRASS, T_ROCK, tilesSource } from "./mapgen";
 import {
   L_CHECK,
   L_MARBLE,

@@ -24,7 +24,6 @@ import {
   clearMemberIndex,
   deleteParty,
   loadInvitedParty,
-  loadParty,
   loadPartyOf,
   storeParty,
 } from "@/lib/worldbox/social/party-online";

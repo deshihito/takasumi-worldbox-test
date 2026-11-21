@@ -1,5 +1,4 @@
 import {
-  createInitialSessionState,
   executeFlowAction,
   navigateToScreen,
   triggerArrestInterrupt,
