@@ -1,5 +1,3 @@
-import { SITE_URL } from "./site";
-
 export type DiscordIdentity = {
   id: string;
   name: string;
@@ -53,20 +51,6 @@ export function isGameSlug(raw: unknown): raw is string {
   return typeof raw === "string" && GAME_ID_PATTERN.test(raw);
 }
 
-export function inviteUrlForGame(gameId: string, code: string): string | null {
-  const normalized = normalizeRoomCode(code);
-  if (!normalized || !isGameSlug(gameId)) return null;
-  return `${SITE_URL}/games/${gameId}?room=${normalized}`;
-}
-
-export function roomCodeFromSearch(search: string): string | null {
-  try {
-    return normalizeRoomCode(new URLSearchParams(search).get("room"));
-  } catch {
-    return null;
-  }
-}
-
 export function shareCustomIdForRoom(gameId: string, code: string): string | null {
   const normalized = normalizeRoomCode(code);
   if (!normalized || !isGameSlug(gameId)) return null;
@@ -82,22 +66,4 @@ export function roomFromShareCustomId(
   const code = normalizeRoomCode(parts[2]);
   if (!code || !isGameSlug(parts[1])) return null;
   return { gameId: parts[1], code };
-}
-
-export function activityLandingPath(args: {
-  frameId: string | null | undefined;
-  instanceId: string | null | undefined;
-}): string | null {
-  if (!args.frameId || !args.instanceId) return null;
-  return "/games";
-}
-
-export function activityLandingUrl(args: {
-  frameId: string | null | undefined;
-  instanceId: string | null | undefined;
-  search: string;
-}): string | null {
-  const path = activityLandingPath({ frameId: args.frameId, instanceId: args.instanceId });
-  if (!path) return null;
-  return `${SITE_URL}${path}${args.search}`;
 }

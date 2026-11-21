@@ -51,7 +51,6 @@ export function cookies() { throw new Error("not in request scope"); }
 export function headers() { throw new Error("not in request scope"); }
 `);
 
-const siteUrl = dataUrl(transpile("site.ts"));
 const subdomainUrl = dataUrl(transpile("subdomain.ts"));
 const authUrl = dataUrl(
   transpile("auth.ts")
@@ -59,9 +58,7 @@ const authUrl = dataUrl(
     .replaceAll('"./deploy-config"', JSON.stringify(dataUrl(transpile("deploy-config.ts"))))
     .replaceAll('"./subdomain"', JSON.stringify(subdomainUrl)),
 );
-const discordActivityUrl = dataUrl(
-  transpile("discord-activity.ts").replaceAll('"./site"', JSON.stringify(siteUrl)),
-);
+const discordActivityUrl = dataUrl(transpile("discord-activity.ts"));
 
 const activityAuthStubUrl = dataUrl(`
 export async function exchangeDiscordActivityCode() {
