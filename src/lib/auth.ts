@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { cookies } from "next/headers";
 import { DEPLOY_CONFIG } from "./deploy-config";
 import { effectiveHost } from "./subdomain";
 
@@ -58,10 +57,6 @@ const GUEST_SESSION_FALLBACK_SECRET = "taka-worldbox-guest-session-fallback";
 function signWith(secret: string, value: string) {
   if (!secret) return "";
   return crypto.createHmac("sha256", secret).update(value).digest("base64url");
-}
-
-function sign(value: string) {
-  return signWith(sessionSecret(), value);
 }
 
 function safelyEqual(left: string, right: string) {
@@ -159,20 +154,6 @@ export function readSessionInfo(value?: string): SessionInfo | null {
 export function readCookie(request: Request, name: string) {
   const value = request.headers.get("cookie")?.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1];
   return value ? decodeURIComponent(value) : undefined;
-}
-
-export function getRequestUser(request: Request) {
-  return readSession(readCookie(request, SESSION_COOKIE));
-}
-
-export async function getCurrentUser() {
-  const cookieStore = await cookies();
-  return readSession(cookieStore.get(SESSION_COOKIE)?.value);
-}
-
-export async function getCurrentSession() {
-  const cookieStore = await cookies();
-  return readSessionInfo(cookieStore.get(SESSION_COOKIE)?.value);
 }
 
 function discordAvatarUrl(userId: string, avatarHash: string | null): string {
