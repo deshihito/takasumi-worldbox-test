@@ -165,7 +165,7 @@ async function handlePost(request: Request, session: AuthedSession) {
         await storeProfile(ownerKey, current);
         return statusError("economy_failed", 503);
       }
-      const submitted = await submitEconomyOp(op);
+      const submitted = await submitEconomyOp(op, { freshId: true });
       if (submitted.state === "unavailable") {
         await storeProfile(ownerKey, current);
         return statusError("economy_failed", 503);
@@ -180,7 +180,10 @@ async function handlePost(request: Request, session: AuthedSession) {
         );
       }
       if (settled && settled.status !== "pending") {
-        const balance = await readUserBalance(discordId);
+        const balance =
+          submitted.state !== "pending" && submitted.newBalance !== undefined
+            ? submitted.newBalance
+            : await readUserBalance(discordId);
         return NextResponse.json(
           {
             profile: result.profile,
@@ -228,9 +231,12 @@ async function handlePost(request: Request, session: AuthedSession) {
     case "buy": {
       const gate = coinGate();
       if ("response" in gate) return gate.response;
-      const place = await shopGate();
+      const [place, myGenre, balance] = await Promise.all([
+        shopGate(),
+        loadMyLobbyShopGenre(ownerKey),
+        readUserBalance(gate.discordId),
+      ]);
       if (place) return place;
-      const myGenre = await loadMyLobbyShopGenre(ownerKey);
       const genreError = checkBuyGenre(myGenre, data.itemId);
       if (genreError) return statusError(genreError, 409);
       const soldError = checkBuySold(data.itemId);
@@ -238,7 +244,6 @@ async function handlePost(request: Request, session: AuthedSession) {
       const dayKey = shopDayKeyOf(Date.now());
       const dailyError = checkDailyStock(myGenre, data.itemId, dayKey);
       if (dailyError) return statusError(dailyError, 409);
-      const balance = await readUserBalance(gate.discordId);
       if (balance === null) return statusError("economy_unavailable", 503);
       const itemDef = itemById(data.itemId as string);
       const unitPrice = myGenre && itemDef ? dailyPriceFor(itemDef, dayKey) : undefined;

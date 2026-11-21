@@ -35,16 +35,22 @@ export async function listTradesForUser(
   try {
     const rows = await kvList(WORLDBOX_TRADES_NAMESPACE);
     const out: DirectTradeOffer[] = [];
+    const expiredKeys: string[] = [];
     for (const [k, raw] of rows) {
       if (!k.startsWith("trade:")) continue;
       const offer = parseTradeOffer(raw);
       if (!offer) continue;
       if (offer.fromKey !== ownerKey && offer.toKey !== ownerKey) continue;
       if (offer.status === "pending" && !isTradeActive(offer, now)) {
-        await kvDelete(WORLDBOX_TRADES_NAMESPACE, k).catch(() => {});
+        expiredKeys.push(k);
         continue;
       }
       out.push(offer);
+    }
+    if (expiredKeys.length > 0) {
+      void Promise.all(
+        expiredKeys.map((k) => kvDelete(WORLDBOX_TRADES_NAMESPACE, k).catch(() => {})),
+      );
     }
     return out.sort((a, b) => b.createdAt - a.createdAt).slice(0, 24);
   } catch {

@@ -299,6 +299,7 @@ export default function WorldBoxEconomyPanel({
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
         profile?: PlayerProfile;
+        balance?: number;
         error?: string;
       };
       if (!res.ok || !data.profile) {
@@ -306,10 +307,11 @@ export default function WorldBoxEconomyPanel({
         return;
       }
       setProfile(data.profile);
+      if (typeof data.balance === "number") setBalance(data.balance);
       setMsg(describe(data));
       const se = ACTION_SE[String(payload.action ?? "")];
       if (se) playWbSe(se);
-      void refreshBridge();
+      if (typeof data.balance !== "number") void refreshBridge();
     } catch {
       setMsg("できませんでした");
     } finally {
@@ -345,16 +347,25 @@ export default function WorldBoxEconomyPanel({
           amount: Number(transferAmount),
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        balance?: number;
+        op?: EconomyOp;
+      };
       if (!res.ok) {
         setMsg(ERROR_LABEL[data.error ?? ""] ?? "送金を受け付けられませんでした");
         return;
+      }
+      if (typeof data.balance === "number") setBalance(data.balance);
+      if (data.op) {
+        const nextOp = data.op;
+        setOps((prev) => [nextOp, ...prev.filter((o) => o.id !== nextOp.id)].slice(0, 20));
       }
       setTransferTo("");
       setTransferAmount("");
       setMsg("送金を受け付けました");
       playWbSe("coin");
-      void refreshBridge();
+      if (typeof data.balance !== "number") void refreshBridge();
     } catch {
       setMsg("送金を受け付けられませんでした");
     } finally {
@@ -371,16 +382,32 @@ export default function WorldBoxEconomyPanel({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ action, amount: Math.trunc(Number(bankAmtStr) || 0) }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        balance?: number;
+        account?: { deposit: number; loanPrincipal: number; accruedInterest: number };
+        credit?: {
+          totalCollateral: number;
+          maxBorrow: number;
+          availableBorrow: number;
+          debt: number;
+          ltv: number;
+        };
+      };
       if (!res.ok) {
         setMsg(
           ERROR_LABEL[data.error ?? ""] ?? `銀行処理に失敗しました (${data.error ?? res.status})`,
         );
         return;
       }
+      if (typeof data.balance === "number") setBalance(data.balance);
+      if (data.account && data.credit) {
+        const nextAcc = data.account;
+        const nextCredit = data.credit;
+        setBankData((prev) => (prev ? { ...prev, account: nextAcc, credit: nextCredit } : prev));
+      }
       setMsg(`${label}が完了しました`);
       playWbSe("coin");
-      void refreshBridge();
       void refreshBank();
     } catch {
       setMsg("通信に失敗しました");

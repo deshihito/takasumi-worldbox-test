@@ -38,18 +38,27 @@ function sanitizeText(raw: unknown, maxLen: number): string {
     .slice(0, maxLen);
 }
 
-async function payOwnerKey(targetKey: string, amount: number, reason: string): Promise<boolean> {
-  if (amount <= 0) return true;
+async function payOwnerKey(
+  targetKey: string,
+  amount: number,
+  reason: string,
+): Promise<{ ok: boolean; newBalance?: number }> {
+  if (amount <= 0) return { ok: true };
   if (targetKey.startsWith("discord:")) {
     const res = await payoutUserChunked(targetKey, targetKey.slice(8), amount, reason);
-    return res.state === "done" || res.state === "pending";
+    return {
+      ok: res.state === "done" || res.state === "pending",
+      ...(res.newBalance !== undefined ? { newBalance: res.newBalance } : {}),
+    };
   }
   const prof = await loadProfile(targetKey);
-  if (!prof) return false;
-  return storeProfile(targetKey, {
+  if (!prof) return { ok: false };
+  const nextCoins = Math.min(100_000_000, prof.coins + amount);
+  const saved = await storeProfile(targetKey, {
     ...prof,
-    coins: Math.min(100_000_000, prof.coins + amount),
+    coins: nextCoins,
   });
+  return { ok: saved, newBalance: nextCoins };
 }
 
 export async function GET(request: Request) {
@@ -116,10 +125,13 @@ export async function POST(request: Request) {
       let targetKey = typeof body.targetOwnerKey === "string" ? body.targetOwnerKey : "";
       let targetName = sanitizeText(body.targetName, 24) || "市民";
       if (!targetKey && typeof body.targetPresenceId === "string" && body.targetPresenceId) {
-        const resolved = await findPresenceOwnerKey(body.targetPresenceId);
+        const [resolved, presenceList] = await Promise.all([
+          findPresenceOwnerKey(body.targetPresenceId),
+          listPresence(),
+        ]);
         if (!resolved) return err("target_offline", 409);
         targetKey = resolved;
-        const pres = (await listPresence()).find((p) => p.id === body.targetPresenceId);
+        const pres = presenceList.find((p) => p.id === body.targetPresenceId);
         if (pres) targetName = pres.name;
       }
       if (!targetKey || targetKey === ownerKey) return err("invalid_target", 400);
@@ -128,7 +140,7 @@ export async function POST(request: Request) {
       if (!paid.ok) return err(paid.error, 409);
 
       const sent = await payOwnerKey(targetKey, amount, "p2p_transfer");
-      if (!sent) {
+      if (!sent.ok) {
         await awardMmoCoins(session, ownerKey, amount, "p2p_trade");
         return err("transfer_failed", 503);
       }
@@ -141,15 +153,6 @@ export async function POST(request: Request) {
     if (action === "create_offer") {
       let targetKey = typeof body.targetOwnerKey === "string" ? body.targetOwnerKey : "";
       let targetName = sanitizeText(body.targetName, 24) || "相手市民";
-      if (!targetKey && typeof body.targetPresenceId === "string" && body.targetPresenceId) {
-        const resolved = await findPresenceOwnerKey(body.targetPresenceId);
-        if (!resolved) return err("target_offline", 409);
-        targetKey = resolved;
-        const pres = (await listPresence()).find((p) => p.id === body.targetPresenceId);
-        if (pres) targetName = pres.name;
-      }
-      if (!targetKey || targetKey === ownerKey) return err("invalid_target", 400);
-
       const offerCoins = sanitizeCoinAmount(body.offerCoins);
       const requestCoins = sanitizeCoinAmount(body.requestCoins);
       const offerItems = sanitizeTradeItems(body.offerItems);
@@ -163,17 +166,35 @@ export async function POST(request: Request) {
         return err("empty_offer", 400);
       }
 
-      const senderProfile = await loadProfile(ownerKey);
+      const [presenceResolved, presenceList, senderProfile] = await Promise.all([
+        !targetKey && typeof body.targetPresenceId === "string" && body.targetPresenceId
+          ? findPresenceOwnerKey(body.targetPresenceId)
+          : Promise.resolve(targetKey || null),
+        !targetKey && typeof body.targetPresenceId === "string" && body.targetPresenceId
+          ? listPresence()
+          : Promise.resolve([]),
+        loadProfile(ownerKey),
+      ]);
+      if (!targetKey && typeof body.targetPresenceId === "string" && body.targetPresenceId) {
+        if (!presenceResolved) return err("target_offline", 409);
+        targetKey = presenceResolved;
+        const pres = presenceList.find((p) => p.id === body.targetPresenceId);
+        if (pres) targetName = pres.name;
+      }
+      if (!targetKey || targetKey === ownerKey) return err("invalid_target", 400);
+
       if (!validateOfferInventory(senderProfile, offerItems)) {
         return err("not_enough_items", 409);
       }
 
       // Escrow sender's offered coins up front so acceptance is always safe
-      let balance = await getMmoBalance(session, ownerKey);
+      let balance: number | null;
       if (offerCoins > 0) {
         const paid = await spendMmoCoins(session, ownerKey, offerCoins, "p2p_trade", "p2p_trade");
         if (!paid.ok) return err(paid.error, 409);
         balance = paid.balance;
+      } else {
+        balance = await getMmoBalance(session, ownerKey);
       }
 
       const offer: DirectTradeOffer = {
@@ -206,12 +227,18 @@ export async function POST(request: Request) {
       if (action === "decline_offer" && offer.toKey !== ownerKey) return err("not_recipient", 403);
 
       const nextStatus = action === "cancel_offer" ? "cancelled" : "declined";
-      await storeTradeOffer({ ...offer, status: nextStatus });
-      if (offer.offerCoins > 0) {
-        await payOwnerKey(offer.fromKey, offer.offerCoins, "p2p_trade");
-      }
+      const [, refundRes] = await Promise.all([
+        storeTradeOffer({ ...offer, status: nextStatus }),
+        offer.offerCoins > 0
+          ? payOwnerKey(offer.fromKey, offer.offerCoins, "p2p_trade")
+          : Promise.resolve({ ok: true as const, newBalance: undefined }),
+      ]);
+      const balance =
+        action === "cancel_offer" && refundRes.newBalance !== undefined
+          ? refundRes.newBalance
+          : await getMmoBalance(session, ownerKey);
       return NextResponse.json(
-        { ok: true, status: nextStatus, balance: await getMmoBalance(session, ownerKey) },
+        { ok: true, offerId: offer.id, status: nextStatus, balance },
         { headers: NO_STORE },
       );
     }
@@ -227,6 +254,7 @@ export async function POST(request: Request) {
       const swapped = executeTradeProfiles(senderProfile, receiverProfile, offer);
       if (!swapped.ok) return err(swapped.error, 409);
 
+      let balanceAfterSpend: number | null = null;
       if (offer.requestCoins > 0) {
         const paidReq = await spendMmoCoins(
           session,
@@ -236,29 +264,36 @@ export async function POST(request: Request) {
           "p2p_trade",
         );
         if (!paidReq.ok) return err(paidReq.error, 409);
+        balanceAfterSpend = paidReq.balance;
       }
 
-      await Promise.all([
+      const [, , , receiverPayout] = await Promise.all([
         storeProfile(offer.fromKey, swapped.senderProfile),
         storeProfile(offer.toKey, swapped.receiverProfile),
         storeTradeOffer({ ...offer, status: "accepted" }),
+        offer.offerCoins > 0
+          ? payOwnerKey(offer.toKey, offer.offerCoins, "p2p_trade")
+          : Promise.resolve({ ok: true as const, newBalance: undefined }),
+        offer.requestCoins > 0
+          ? payOwnerKey(offer.fromKey, offer.requestCoins, "p2p_trade")
+          : Promise.resolve({ ok: true as const, newBalance: undefined }),
       ]);
 
-      if (offer.offerCoins > 0) {
-        await payOwnerKey(offer.toKey, offer.offerCoins, "p2p_trade");
-      }
-      if (offer.requestCoins > 0) {
-        await payOwnerKey(offer.fromKey, offer.requestCoins, "p2p_trade");
-      }
-
       void pushMmoNews("economy", `[P2P取引] ${offer.fromName} / ${offer.toName} 取引成立`, now);
+
+      const finalBalance =
+        receiverPayout.newBalance !== undefined
+          ? receiverPayout.newBalance
+          : balanceAfterSpend !== null
+            ? balanceAfterSpend
+            : await getMmoBalance(session, ownerKey);
 
       return NextResponse.json(
         {
           ok: true,
           offer: { ...offer, status: "accepted" },
           profile: swapped.receiverProfile,
-          balance: await getMmoBalance(session, ownerKey),
+          balance: finalBalance,
         },
         { headers: NO_STORE },
       );

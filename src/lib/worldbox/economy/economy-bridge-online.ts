@@ -236,37 +236,51 @@ type ChangeBalanceResult =
 async function changeBalanceDirect(
   discordId: string,
   delta: number,
-  options: { requireFunds?: boolean; createWith?: number | null } = {},
+  options: {
+    requireFunds?: boolean;
+    createWith?: number | null;
+    knownBalance?: number | null;
+  } = {},
 ): Promise<ChangeBalanceResult> {
   const requireFunds = options.requireFunds === true;
   const createWith = options.createWith ?? null;
   for (let attempt = 0; attempt < BALANCE_UPDATE_ATTEMPTS; attempt++) {
-    const rows = await tableSelect<UserBalanceRow>(
-      "users",
-      "balance",
-      [{ column: "user_id", op: "eq", value: discordId }],
-      1,
-    );
-    if (rows.length === 0) {
-      if (requireFunds) return { ok: false, error: "insufficient_funds" };
-      if (createWith === null) return { ok: false, error: "balance_update_failed" };
-      const newBalance = createWith + delta;
-      try {
-        await tableInsert("users", { user_id: discordId, balance: newBalance, debt: 0 });
-        return { ok: true, newBalance };
-      } catch {
-        continue;
+    let oldBalance: number;
+    if (
+      attempt === 0 &&
+      typeof options.knownBalance === "number" &&
+      Number.isFinite(options.knownBalance)
+    ) {
+      oldBalance = Math.trunc(options.knownBalance);
+    } else {
+      const rows = await tableSelect<UserBalanceRow>(
+        "users",
+        "balance",
+        [{ column: "user_id", op: "eq", value: discordId }],
+        1,
+      );
+      if (rows.length === 0) {
+        if (requireFunds) return { ok: false, error: "insufficient_funds" };
+        if (createWith === null) return { ok: false, error: "balance_update_failed" };
+        const newBalance = createWith + delta;
+        try {
+          await tableInsert("users", { user_id: discordId, balance: newBalance, debt: 0 });
+          return { ok: true, newBalance };
+        } catch {
+          continue;
+        }
       }
+      const parsed = Number(rows[0].balance ?? 0);
+      if (!Number.isFinite(parsed)) return { ok: false, error: "balance_update_failed" };
+      oldBalance = Math.trunc(parsed);
     }
-    const oldBalance = Number(rows[0].balance ?? 0);
-    if (!Number.isFinite(oldBalance)) return { ok: false, error: "balance_update_failed" };
-    const newBalance = Math.trunc(oldBalance) + delta;
+    const newBalance = oldBalance + delta;
     if (requireFunds && newBalance < 0) return { ok: false, error: "insufficient_funds" };
     let updated: unknown[];
     try {
       updated = await tableUpdate("users", { balance: newBalance }, [
         { column: "user_id", op: "eq", value: discordId },
-        { column: "balance", op: "eq", value: Math.trunc(oldBalance) },
+        { column: "balance", op: "eq", value: oldBalance },
       ]);
     } catch (error) {
       const now = await readUserBalance(discordId);
@@ -335,11 +349,16 @@ function applyMetricRecord(
   return out;
 }
 
-async function recordMetricDirect(op: EconomyOp, applied: number): Promise<boolean> {
+async function recordMetricDirect(
+  op: EconomyOp,
+  applied: number,
+  prefetched?: { current: unknown; bankroll: number | null },
+): Promise<boolean> {
   try {
     const date = new Date().toISOString().slice(0, 10);
-    const current = await kvGet(WORLDBOX_ECONOMY_METRICS_NAMESPACE, date);
-    const bankroll = await readBankrollDirect();
+    const [current, bankroll] = prefetched
+      ? [prefetched.current, prefetched.bankroll]
+      : await Promise.all([kvGet(WORLDBOX_ECONOMY_METRICS_NAMESPACE, date), readBankrollDirect()]);
     await kvSet(
       WORLDBOX_ECONOMY_METRICS_NAMESPACE,
       date,
@@ -442,13 +461,48 @@ async function addLossDirect(amount: number): Promise<void> {
   }
 }
 
-async function applyEarnDirect(op: EconomyOp): Promise<number> {
+interface HistoryRecord {
+  senderId: string;
+  receiverId: string;
+  amount: number;
+  reason: string;
+}
+
+interface DirectApplyResult {
+  applied: number;
+  newBalance?: number;
+  history: HistoryRecord[];
+}
+
+async function readExistingUserBalanceRow(discordId: string): Promise<number | null> {
+  try {
+    const rows = await tableSelect<UserBalanceRow>(
+      "users",
+      "balance",
+      [{ column: "user_id", op: "eq", value: discordId }],
+      1,
+    );
+    if (rows.length === 0) return null;
+    const balance = Number(rows[0].balance ?? 0);
+    return Number.isFinite(balance) ? Math.trunc(balance) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function applyEarnDirect(
+  op: EconomyOp,
+  knownBalance?: number | null,
+): Promise<DirectApplyResult> {
   const breakdown = await payHouseDirect(op.amount);
   const paid = breakdown.paid;
-  if (paid <= 0) return 0;
+  if (paid <= 0) return { applied: 0, history: [] };
   let credited: ChangeBalanceResult;
   try {
-    credited = await changeBalanceDirect(op.discordId, paid, { createWith: NEW_USER_BALANCE });
+    credited = await changeBalanceDirect(op.discordId, paid, {
+      createWith: NEW_USER_BALANCE,
+      knownBalance,
+    });
   } catch (error) {
     await refundHouseDirect(breakdown);
     throw error;
@@ -457,16 +511,26 @@ async function applyEarnDirect(op: EconomyOp): Promise<number> {
     await refundHouseDirect(breakdown);
     throw new DirectFailure("credit_failed");
   }
-  await recordHistoryDirect(WORLDBOX_HISTORY_ID, op.discordId, paid, op.reason);
-  return paid;
+  return {
+    applied: paid,
+    newBalance: credited.newBalance,
+    history: [
+      { senderId: WORLDBOX_HISTORY_ID, receiverId: op.discordId, amount: paid, reason: op.reason },
+    ],
+  };
 }
 
-async function applyGambleDirect(op: EconomyOp): Promise<number> {
+async function applyGambleDirect(
+  op: EconomyOp,
+  knownBalance?: number | null,
+): Promise<DirectApplyResult> {
   if (op.payout === undefined) throw new DirectFailure("invalid_op");
   const user = op.discordId;
   const bet = op.amount;
   const payout = op.payout;
   const prepaid = op.prepaid === true;
+  const history: HistoryRecord[] = [];
+  let runningBalance = knownBalance;
 
   const profit = Math.max(0, payout - bet);
   let breakdown: PayHouseBreakdown | null = null;
@@ -477,17 +541,26 @@ async function applyGambleDirect(op: EconomyOp): Promise<number> {
   }
 
   if (!prepaid) {
-    const debit = await changeBalanceDirect(user, -bet, { requireFunds: true });
+    const debit = await changeBalanceDirect(user, -bet, {
+      requireFunds: true,
+      knownBalance: runningBalance,
+    });
     if (!debit.ok) {
       if (breakdown) await refundHouseDirect(breakdown);
       throw new DirectFailure(debit.error);
     }
-    await recordHistoryDirect(user, WORLDBOX_HISTORY_ID, bet, op.reason);
+    runningBalance = debit.newBalance;
+    history.push({
+      senderId: user,
+      receiverId: WORLDBOX_HISTORY_ID,
+      amount: bet,
+      reason: op.reason,
+    });
   }
 
   if (payout <= 0) {
     await addLossDirect(bet);
-    return 0;
+    return { applied: 0, newBalance: runningBalance ?? undefined, history };
   }
   if (prepaid && payout < bet) {
     await addLossDirect(bet - payout);
@@ -496,7 +569,10 @@ async function applyGambleDirect(op: EconomyOp): Promise<number> {
   const creditAmount = Math.min(payout, bet) + housePaid;
   let credited: ChangeBalanceResult | null = null;
   try {
-    credited = await changeBalanceDirect(user, creditAmount, { createWith: NEW_USER_BALANCE });
+    credited = await changeBalanceDirect(user, creditAmount, {
+      createWith: NEW_USER_BALANCE,
+      knownBalance: runningBalance,
+    });
   } catch {
     credited = null;
   }
@@ -511,34 +587,64 @@ async function applyGambleDirect(op: EconomyOp): Promise<number> {
     }
     throw new DirectFailure("credit_failed");
   }
-  await recordHistoryDirect(WORLDBOX_HISTORY_ID, user, creditAmount, op.reason);
-  return creditAmount;
+  history.push({
+    senderId: WORLDBOX_HISTORY_ID,
+    receiverId: user,
+    amount: creditAmount,
+    reason: op.reason,
+  });
+  return { applied: creditAmount, newBalance: credited.newBalance, history };
 }
 
-async function applySpendDirect(op: EconomyOp): Promise<number> {
-  const result = await changeBalanceDirect(op.discordId, -op.amount, { requireFunds: true });
+async function applySpendDirect(
+  op: EconomyOp,
+  knownBalance?: number | null,
+): Promise<DirectApplyResult> {
+  const result = await changeBalanceDirect(op.discordId, -op.amount, {
+    requireFunds: true,
+    knownBalance,
+  });
   if (!result.ok) throw new DirectFailure(result.error);
-  await recordHistoryDirect(op.discordId, WORLDBOX_HISTORY_ID, op.amount, op.reason);
-  return op.amount;
+  return {
+    applied: op.amount,
+    newBalance: result.newBalance,
+    history: [
+      {
+        senderId: op.discordId,
+        receiverId: WORLDBOX_HISTORY_ID,
+        amount: op.amount,
+        reason: op.reason,
+      },
+    ],
+  };
 }
 
-async function applyTransferDirect(op: EconomyOp): Promise<number> {
+async function applyTransferDirect(op: EconomyOp): Promise<DirectApplyResult> {
   if (!op.toDiscordId) throw new DirectFailure("invalid_op");
+  let newBalance: number | undefined;
   try {
-    await rpc<number>("transfer_coins", {
+    const rawBal = await rpc<number>("transfer_coins", {
       p_sender_id: op.discordId,
       p_receiver_id: op.toDiscordId,
       p_amount: op.amount,
       p_new_user_balance: NEW_USER_BALANCE,
     });
+    if (typeof rawBal === "number" && Number.isFinite(rawBal)) {
+      newBalance = Math.trunc(rawBal);
+    }
   } catch (error) {
     if (error instanceof BotApiError && error.status === 400) {
       throw new DirectFailure("insufficient_funds");
     }
     throw error;
   }
-  await recordHistoryDirect(op.discordId, op.toDiscordId, op.amount, op.reason);
-  return op.amount;
+  return {
+    applied: op.amount,
+    newBalance,
+    history: [
+      { senderId: op.discordId, receiverId: op.toDiscordId, amount: op.amount, reason: op.reason },
+    ],
+  };
 }
 
 async function isDirectKind(op: EconomyOp): Promise<boolean> {
@@ -547,19 +653,30 @@ async function isDirectKind(op: EconomyOp): Promise<boolean> {
   return false;
 }
 
-async function applyDirectByKind(op: EconomyOp): Promise<number> {
-  if (op.kind === "spend") return applySpendDirect(op);
+async function applyDirectByKind(
+  op: EconomyOp,
+  knownBalance?: number | null,
+): Promise<DirectApplyResult> {
+  if (op.kind === "spend") return applySpendDirect(op, knownBalance);
   if (op.kind === "transfer") return applyTransferDirect(op);
-  if (op.kind === "earn") return applyEarnDirect(op);
-  if (op.kind === "gamble") return applyGambleDirect(op);
+  if (op.kind === "earn") return applyEarnDirect(op, knownBalance);
+  if (op.kind === "gamble") return applyGambleDirect(op, knownBalance);
   throw new DirectFailure("invalid_op");
 }
 
 export type SubmitEconomyOpResult =
-  | { state: "done" | "failed" | "pending"; op: EconomyOp }
+  | { state: "done" | "failed" | "pending"; op: EconomyOp; newBalance?: number }
   | { state: "unavailable" };
 
-export async function submitEconomyOp(op: EconomyOp): Promise<SubmitEconomyOpResult> {
+export interface SubmitEconomyOpOptions {
+  /** Set true ONLY when op.id was freshly generated server-side via crypto.randomUUID() */
+  freshId?: boolean;
+}
+
+export async function submitEconomyOp(
+  op: EconomyOp,
+  options: SubmitEconomyOpOptions = {},
+): Promise<SubmitEconomyOpResult> {
   if (isGuestEconomyOp(op)) {
     return {
       state: "failed",
@@ -568,87 +685,166 @@ export async function submitEconomyOp(op: EconomyOp): Promise<SubmitEconomyOpRes
   }
   if (!isBotApiConfigured()) return { state: "unavailable" };
 
-  let existingRaw: unknown = null;
-  try {
-    existingRaw = await kvGet(WORLDBOX_ECONOMY_NAMESPACE, op.id);
-  } catch {
-    existingRaw = null;
-  }
-  const existing = parseEconomyOp(existingRaw);
-  if (existing) {
-    if (existing.status === "done") return { state: "done", op: existing };
-    if (existing.status === "failed") return { state: "failed", op: existing };
-    return { state: "pending", op: existing };
-  }
+  const date = new Date().toISOString().slice(0, 10);
+  const needsUserBalance = op.kind === "spend" || op.kind === "earn" || op.kind === "gamble";
+  const bankrollUnchanged = op.kind === "spend" || op.kind === "transfer";
 
-  const ledger = await loadAppliedLedger(op.id);
-  if (ledger?.status === "applied") {
-    const record = await writeOpTerminal(op, "done", { appliedAmount: ledger.appliedAmount ?? 0 });
-    return { state: "done", op: record };
-  }
-  if (ledger?.status === "failed") {
-    const record = await writeOpTerminal(op, "failed", { error: ledger.error ?? "apply_failed" });
-    return { state: "failed", op: record };
-  }
-  if (ledger?.status === "applying") {
-    if (await queueEconomyOp(op)) return { state: "pending", op };
-    return { state: "unavailable" };
-  }
+  let prefetchedBalance: number | null = null;
+  let prefetchedMetric: unknown = null;
+  let prefetchedBankroll: number | null = null;
+  let metricPrefetched = false;
 
-  if (!(await isDirectKind(op))) {
-    if (await queueEconomyOp(op)) return { state: "pending", op };
-    return { state: "unavailable" };
-  }
-
-  const token = crypto.randomUUID();
-  const claimed: EconomyOp & { claim: { token: string; at: number } } = {
-    ...op,
-    claim: { token, at: Date.now() },
-  };
-  try {
-    await kvSet(WORLDBOX_ECONOMY_NAMESPACE, op.id, claimed);
-    const current = await kvGet(WORLDBOX_ECONOMY_NAMESPACE, op.id);
-    const currentClaim =
-      typeof current === "object" && current !== null
-        ? (current as { claim?: { token?: unknown } }).claim
-        : undefined;
-    if (!currentClaim || currentClaim.token !== token) {
-      const currentOp = parseEconomyOp(current);
-      if (currentOp) return { state: "pending", op: currentOp };
+  if (options.freshId) {
+    if (!(await isDirectKind(op))) {
+      if (await queueEconomyOp(op)) return { state: "pending", op };
       return { state: "unavailable" };
     }
-  } catch {
-    if (await queueEconomyOp(op)) return { state: "pending", op };
-    return { state: "unavailable" };
+    const [applyingSaved, bal, curMetric, curBankroll] = await Promise.all([
+      saveAppliedLedger(op.id, { status: "applying", at: Date.now() }),
+      needsUserBalance ? readExistingUserBalanceRow(op.discordId) : Promise.resolve(null),
+      kvGet(WORLDBOX_ECONOMY_METRICS_NAMESPACE, date).catch(() => null),
+      bankrollUnchanged ? readBankrollDirect() : Promise.resolve(null),
+    ]);
+    if (!applyingSaved) {
+      if (await queueEconomyOp(op)) return { state: "pending", op };
+      return { state: "unavailable" };
+    }
+    prefetchedBalance = bal;
+    prefetchedMetric = curMetric;
+    prefetchedBankroll = curBankroll;
+    metricPrefetched = bankrollUnchanged;
+  } else {
+    const [existingRaw, ledger] = await Promise.all([
+      kvGet(WORLDBOX_ECONOMY_NAMESPACE, op.id).catch(() => null),
+      loadAppliedLedger(op.id),
+    ]);
+    const existing = parseEconomyOp(existingRaw);
+    if (existing) {
+      if (existing.status === "done") return { state: "done", op: existing };
+      if (existing.status === "failed") return { state: "failed", op: existing };
+      return { state: "pending", op: existing };
+    }
+    if (ledger?.status === "applied") {
+      const record = await writeOpTerminal(op, "done", {
+        appliedAmount: ledger.appliedAmount ?? 0,
+      });
+      return { state: "done", op: record };
+    }
+    if (ledger?.status === "failed") {
+      const record = await writeOpTerminal(op, "failed", { error: ledger.error ?? "apply_failed" });
+      return { state: "failed", op: record };
+    }
+    if (ledger?.status === "applying") {
+      if (await queueEconomyOp(op)) return { state: "pending", op };
+      return { state: "unavailable" };
+    }
+
+    if (!(await isDirectKind(op))) {
+      if (await queueEconomyOp(op)) return { state: "pending", op };
+      return { state: "unavailable" };
+    }
+
+    const token = crypto.randomUUID();
+    const claimed: EconomyOp & { claim: { token: string; at: number } } = {
+      ...op,
+      claim: { token, at: Date.now() },
+    };
+    try {
+      const [, applyingSaved] = await Promise.all([
+        kvSet(WORLDBOX_ECONOMY_NAMESPACE, op.id, claimed),
+        saveAppliedLedger(op.id, { status: "applying", at: Date.now() }),
+      ]);
+      const [current, bal, curMetric, curBankroll] = await Promise.all([
+        kvGet(WORLDBOX_ECONOMY_NAMESPACE, op.id),
+        needsUserBalance ? readExistingUserBalanceRow(op.discordId) : Promise.resolve(null),
+        kvGet(WORLDBOX_ECONOMY_METRICS_NAMESPACE, date).catch(() => null),
+        bankrollUnchanged ? readBankrollDirect() : Promise.resolve(null),
+      ]);
+      const currentClaim =
+        typeof current === "object" && current !== null
+          ? (current as { claim?: { token?: unknown } }).claim
+          : undefined;
+      if (!currentClaim || currentClaim.token !== token) {
+        const currentOp = parseEconomyOp(current);
+        if (currentOp) return { state: "pending", op: currentOp };
+        return { state: "unavailable" };
+      }
+      if (!applyingSaved) {
+        if (await queueEconomyOp(op)) return { state: "pending", op };
+        return { state: "unavailable" };
+      }
+      prefetchedBalance = bal;
+      prefetchedMetric = curMetric;
+      prefetchedBankroll = curBankroll;
+      metricPrefetched = bankrollUnchanged;
+    } catch {
+      if (await queueEconomyOp(op)) return { state: "pending", op };
+      return { state: "unavailable" };
+    }
   }
 
-  if (!(await saveAppliedLedger(op.id, { status: "applying", at: Date.now() }))) {
-    if (await queueEconomyOp(op)) return { state: "pending", op };
-    return { state: "unavailable" };
-  }
-
-  let applied: number;
+  let result: DirectApplyResult;
   try {
-    applied = await applyDirectByKind(op);
+    result = await applyDirectByKind(op, prefetchedBalance);
   } catch (error) {
     if (error instanceof DirectFailure) {
-      await saveAppliedLedger(op.id, { status: "failed", error: error.code, at: Date.now() });
-      const record = await writeOpTerminal(op, "failed", { error: error.code });
+      const [, record] = await Promise.all([
+        saveAppliedLedger(op.id, { status: "failed", error: error.code, at: Date.now() }),
+        writeOpTerminal(op, "failed", { error: error.code }),
+      ]);
       return { state: "failed", op: record };
     }
     const record = await writeOpTerminal(op, "failed", { error: "apply_failed" });
     return { state: "failed", op: record };
   }
 
-  const metricRecorded = await recordMetricDirect(op, applied);
-  await saveAppliedLedger(op.id, {
-    status: "applied",
-    appliedAmount: applied,
-    metricRecorded,
-    at: Date.now(),
-  });
-  const record = await writeOpTerminal(op, "done", { appliedAmount: applied });
-  return { state: "done", op: record };
+  const applied = result.applied;
+  const historyPromises = result.history.map((h) =>
+    recordHistoryDirect(h.senderId, h.receiverId, h.amount, h.reason),
+  );
+
+  let record: EconomyOp;
+  if (metricPrefetched) {
+    const [, , , terminal] = await Promise.all([
+      Promise.all(historyPromises),
+      recordMetricDirect(op, applied, {
+        current: prefetchedMetric,
+        bankroll: prefetchedBankroll,
+      }),
+      saveAppliedLedger(op.id, {
+        status: "applied",
+        appliedAmount: applied,
+        metricRecorded: true,
+        at: Date.now(),
+      }),
+      writeOpTerminal(op, "done", { appliedAmount: applied }),
+    ]);
+    record = terminal;
+  } else {
+    const [, freshBankroll, terminal] = await Promise.all([
+      Promise.all(historyPromises),
+      readBankrollDirect(),
+      writeOpTerminal(op, "done", { appliedAmount: applied }),
+    ]);
+    record = terminal;
+    await Promise.all([
+      recordMetricDirect(op, applied, {
+        current: prefetchedMetric,
+        bankroll: freshBankroll,
+      }),
+      saveAppliedLedger(op.id, {
+        status: "applied",
+        appliedAmount: applied,
+        metricRecorded: true,
+        at: Date.now(),
+      }),
+    ]);
+  }
+  return {
+    state: "done",
+    op: record,
+    ...(result.newBalance !== undefined ? { newBalance: result.newBalance } : {}),
+  };
 }
 
 export const ECONOMY_CLAIM_STALE_MS = 90_000;
@@ -719,7 +915,7 @@ async function writeSweepInvalidResult(key: string, raw: unknown): Promise<void>
   }
 }
 
-async function applySweepByKind(op: EconomyOp): Promise<number> {
+async function applySweepByKind(op: EconomyOp): Promise<DirectApplyResult> {
   if (op.kind === "steal") throw new DirectFailure("steal_disabled");
   if (op.kind === "earn" && !EARN_REASONS.has(op.reason)) throw new DirectFailure("invalid_reason");
   if (op.kind === "gamble" && !GAMBLE_REASONS.has(op.reason))
@@ -738,80 +934,108 @@ async function sweepOneOp(key: string, raw: unknown): Promise<boolean> {
   const claimed = { ...rawRecord, ...op, status: "pending", claim: { token, at: Date.now() } };
   try {
     await kvSet(WORLDBOX_ECONOMY_NAMESPACE, key, claimed);
-    const current = await kvGet(WORLDBOX_ECONOMY_NAMESPACE, key);
+    const [current, ledgerRaw] = await Promise.all([
+      kvGet(WORLDBOX_ECONOMY_NAMESPACE, key),
+      kvGet(WORLDBOX_ECONOMY_APPLIED_NAMESPACE, op.id).catch(() => undefined),
+    ]);
     const currentRecord = asRecord(current);
     const currentOp = parseEconomyOp(current);
     const claim = currentRecord ? asRecord(currentRecord.claim) : null;
     if (!currentOp || currentOp.status !== "pending" || !claim || claim.token !== token) {
       return false;
     }
-  } catch {
-    return false;
-  }
-
-  let ledgerRaw: unknown;
-  try {
-    ledgerRaw = await kvGet(WORLDBOX_ECONOMY_APPLIED_NAMESPACE, op.id);
-  } catch {
-    return false;
-  }
-  let ledger: AppliedLedgerEntry | null = null;
-  if (ledgerRaw !== null && ledgerRaw !== undefined) {
-    ledger = parseAppliedLedger(ledgerRaw) ?? { status: "applying", at: 0 };
-  }
-  if (ledger?.status === "applied") {
-    const applied = ledger.appliedAmount ?? 0;
-    await writeOpTerminal(op, "done", { appliedAmount: applied });
-    if (!ledger.metricRecorded) {
-      const metricRecorded = await recordMetricDirect(op, applied);
-      if (metricRecorded) {
-        await saveAppliedLedger(op.id, {
-          status: "applied",
-          appliedAmount: applied,
-          metricRecorded: true,
-          at: Date.now(),
-        });
-      }
+    if (ledgerRaw === undefined) return false;
+    let ledger: AppliedLedgerEntry | null = null;
+    if (ledgerRaw !== null) {
+      ledger = parseAppliedLedger(ledgerRaw) ?? { status: "applying", at: 0 };
     }
-    return true;
-  }
-  if (ledger?.status === "failed") {
-    await writeOpTerminal(op, "failed", { error: ledger.error ?? "apply_failed" });
-    return true;
-  }
-  if (ledger?.status === "applying") {
-    await writeOpTerminal(op, "failed", { error: "apply_uncertain" });
-    return true;
+    if (ledger?.status === "applied") {
+      const applied = ledger.appliedAmount ?? 0;
+      await writeOpTerminal(op, "done", { appliedAmount: applied });
+      if (!ledger.metricRecorded) {
+        const metricRecorded = await recordMetricDirect(op, applied);
+        if (metricRecorded) {
+          await saveAppliedLedger(op.id, {
+            status: "applied",
+            appliedAmount: applied,
+            metricRecorded: true,
+            at: Date.now(),
+          });
+        }
+      }
+      return true;
+    }
+    if (ledger?.status === "failed") {
+      await writeOpTerminal(op, "failed", { error: ledger.error ?? "apply_failed" });
+      return true;
+    }
+    if (ledger?.status === "applying") {
+      await writeOpTerminal(op, "failed", { error: "apply_uncertain" });
+      return true;
+    }
+  } catch {
+    return false;
   }
 
   if (!(await saveAppliedLedger(op.id, { status: "applying", at: Date.now() }))) {
     return false;
   }
-  let applied: number;
+  let result: DirectApplyResult;
   try {
-    applied = await applySweepByKind(op);
+    result = await applySweepByKind(op);
   } catch (error) {
     if (error instanceof DirectFailure) {
-      await saveAppliedLedger(op.id, { status: "failed", error: error.code, at: Date.now() });
-      await writeOpTerminal(op, "failed", { error: error.code });
+      await Promise.all([
+        saveAppliedLedger(op.id, { status: "failed", error: error.code, at: Date.now() }),
+        writeOpTerminal(op, "failed", { error: error.code }),
+      ]);
       return true;
     }
     await writeOpTerminal(op, "failed", { error: "apply_failed" });
     return true;
   }
-  const metricRecorded = await recordMetricDirect(op, applied);
-  await saveAppliedLedger(op.id, {
-    status: "applied",
-    appliedAmount: applied,
-    metricRecorded,
-    at: Date.now(),
-  });
-  await writeOpTerminal(op, "done", { appliedAmount: applied });
+  const applied = result.applied;
+  const [, metricRecorded] = await Promise.all([
+    Promise.all(
+      result.history.map((h) => recordHistoryDirect(h.senderId, h.receiverId, h.amount, h.reason)),
+    ),
+    recordMetricDirect(op, applied),
+  ]);
+  await Promise.all([
+    saveAppliedLedger(op.id, {
+      status: "applied",
+      appliedAmount: applied,
+      metricRecorded,
+      at: Date.now(),
+    }),
+    writeOpTerminal(op, "done", { appliedAmount: applied }),
+  ]);
   return true;
+}
+
+const PRUNE_DELETE_BATCH = 16;
+const PRUNE_MAX_DELETES_PER_SWEEP = 160;
+
+async function deleteKeysBatched(namespace: string, keys: readonly string[]): Promise<number> {
+  let deleted = 0;
+  const capped = keys.slice(0, PRUNE_MAX_DELETES_PER_SWEEP);
+  for (let i = 0; i < capped.length; i += PRUNE_DELETE_BATCH) {
+    const batch = capped.slice(i, i + PRUNE_DELETE_BATCH);
+    const results = await Promise.all(
+      batch.map((k) =>
+        kvDelete(namespace, k)
+          .then(() => true)
+          .catch(() => false),
+      ),
+    );
+    for (const ok of results) if (ok) deleted += 1;
+  }
+  return deleted;
 }
 
 async function pruneSweepTerminal(records: Map<string, unknown>): Promise<number> {
   const terminal: { at: number; key: string }[] = [];
+  const terminalKeys = new Set<string>();
   for (const [key, raw] of records) {
     const value = asRecord(raw);
     if (!value || (value.status !== "done" && value.status !== "failed")) continue;
@@ -820,24 +1044,27 @@ async function pruneSweepTerminal(records: Map<string, unknown>): Promise<number
         ? Math.trunc(value.appliedAt)
         : 0;
     terminal.push({ at, key });
+    terminalKeys.add(key);
   }
   terminal.sort((a, b) => b.at - a.at || (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
-  let pruned = 0;
-  for (const entry of terminal.slice(ECONOMY_PRUNE_KEEP_TERMINAL)) {
-    try {
-      await kvDelete(WORLDBOX_ECONOMY_NAMESPACE, entry.key);
-      pruned += 1;
-    } catch {
-      // ベストエフォート
-    }
+
+  const excessKeys = terminal.slice(ECONOMY_PRUNE_KEEP_TERMINAL).map((e) => e.key);
+  const existingLedgers = await kvList(WORLDBOX_ECONOMY_APPLIED_NAMESPACE).catch(
+    () => new Map<string, unknown>(),
+  );
+  const ledgerKeysToDelete: string[] = [];
+  for (const key of existingLedgers.keys()) {
+    if (terminalKeys.has(key)) ledgerKeysToDelete.push(key);
   }
-  for (const entry of terminal) {
-    try {
-      await kvDelete(WORLDBOX_ECONOMY_APPLIED_NAMESPACE, entry.key);
-    } catch {
-      // ベストエフォート
-    }
-  }
+
+  const [pruned] = await Promise.all([
+    excessKeys.length > 0
+      ? deleteKeysBatched(WORLDBOX_ECONOMY_NAMESPACE, excessKeys)
+      : Promise.resolve(0),
+    ledgerKeysToDelete.length > 0
+      ? deleteKeysBatched(WORLDBOX_ECONOMY_APPLIED_NAMESPACE, ledgerKeysToDelete)
+      : Promise.resolve(0),
+  ]);
   return pruned;
 }
 

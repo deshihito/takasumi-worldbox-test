@@ -71,43 +71,41 @@ export async function GET(request: Request) {
   const ownerKey = sessionOwnerKey(session);
   const now = Date.now();
 
-  return withUserLock("bank:global", async () => {
-    const bank = await loadBankState();
-    const acc = accrueBankAccount(
-      bank.accounts[ownerKey] ?? {
-        deposit: 0,
-        loanPrincipal: 0,
-        accruedInterest: 0,
-        lastAccruedAt: now,
-      },
-      bank,
-      now,
-    );
-    const [collaterals, balance] = await Promise.all([
-      computeUserCollaterals(ownerKey, now),
-      readUserBalance(session.id),
-    ]);
-    const credit = computeCreditLimit(
-      acc,
-      collaterals.stockValue,
-      collaterals.fxValue,
-      collaterals.realEstateValue,
-    );
-    const rates = dynamicBankRates(bank);
-    return NextResponse.json(
-      {
-        guest: false,
-        serverNow: now,
-        account: acc,
-        credit,
-        collaterals,
-        rates,
-        totals: { totalDeposits: bank.totalDeposits, totalLoans: bank.totalLoans },
-        balance,
-      },
-      { headers: NO_STORE },
-    );
-  });
+  const [bank, collaterals, balance] = await Promise.all([
+    loadBankState(),
+    computeUserCollaterals(ownerKey, now),
+    readUserBalance(session.id),
+  ]);
+  const acc = accrueBankAccount(
+    bank.accounts[ownerKey] ?? {
+      deposit: 0,
+      loanPrincipal: 0,
+      accruedInterest: 0,
+      lastAccruedAt: now,
+    },
+    bank,
+    now,
+  );
+  const credit = computeCreditLimit(
+    acc,
+    collaterals.stockValue,
+    collaterals.fxValue,
+    collaterals.realEstateValue,
+  );
+  const rates = dynamicBankRates(bank);
+  return NextResponse.json(
+    {
+      guest: false,
+      serverNow: now,
+      account: acc,
+      credit,
+      collaterals,
+      rates,
+      totals: { totalDeposits: bank.totalDeposits, totalLoans: bank.totalLoans },
+      balance,
+    },
+    { headers: NO_STORE },
+  );
 }
 
 export async function POST(request: Request) {
@@ -158,7 +156,7 @@ export async function POST(request: Request) {
             collaterals.fxValue,
             collaterals.realEstateValue,
           ),
-          balance: await readUserBalance(discordId),
+          balance: charged.newBalance ?? (await readUserBalance(discordId)),
         },
         { headers: NO_STORE },
       );
@@ -192,7 +190,7 @@ export async function POST(request: Request) {
             collaterals.fxValue,
             collaterals.realEstateValue,
           ),
-          balance: await readUserBalance(discordId),
+          balance: paid.newBalance ?? (await readUserBalance(discordId)),
         },
         { headers: NO_STORE },
       );
@@ -226,7 +224,7 @@ export async function POST(request: Request) {
             collaterals.fxValue,
             collaterals.realEstateValue,
           ),
-          balance: await readUserBalance(discordId),
+          balance: paid.newBalance ?? (await readUserBalance(discordId)),
         },
         { headers: NO_STORE },
       );
@@ -257,7 +255,7 @@ export async function POST(request: Request) {
             collaterals.fxValue,
             collaterals.realEstateValue,
           ),
-          balance: await readUserBalance(discordId),
+          balance: charged.newBalance ?? (await readUserBalance(discordId)),
         },
         { headers: NO_STORE },
       );

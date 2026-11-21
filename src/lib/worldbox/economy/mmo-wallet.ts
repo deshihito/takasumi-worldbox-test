@@ -29,7 +29,8 @@ export async function awardMmoCoins(
     if (settled.state !== "done" && settled.state !== "pending") {
       return { ok: false, error: settled.error ?? "economy_failed" };
     }
-    const bal = await readUserBalance(session.id);
+    const bal =
+      settled.newBalance !== undefined ? settled.newBalance : await readUserBalance(session.id);
     return { ok: true, balance: bal };
   }
   const profile = await loadProfile(ownerKey);
@@ -61,7 +62,8 @@ export async function spendMmoCoins(
     if (settled.state !== "done") {
       return { ok: false, error: settled.error ?? "economy_failed" };
     }
-    const bal = await readUserBalance(session.id);
+    const bal =
+      settled.newBalance !== undefined ? settled.newBalance : await readUserBalance(session.id);
     return { ok: true, balance: bal };
   }
   const profile = await loadProfile(ownerKey);
