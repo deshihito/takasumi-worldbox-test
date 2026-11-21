@@ -214,21 +214,31 @@ export default function WorldBoxFinancePanel({
   const [msg, setMsg] = useState("");
   const aliveRef = useRef(true);
 
+  const needsFx = !lockedTabs || lockedTabs.includes("fx_spot") || lockedTabs.includes("fx_margin");
+  const needsPred = !lockedTabs || lockedTabs.includes("prediction");
+  const needsPool = !lockedTabs || lockedTabs.includes("house_pool");
+
   const refreshAll = useCallback(async () => {
     try {
       const [fxRes, prRes, hpRes] = await Promise.all([
-        fetch("/api/worldbox/fx", { headers: { Accept: "application/json" } }),
-        fetch("/api/worldbox/prediction", { headers: { Accept: "application/json" } }),
-        fetch("/api/worldbox/house-pool", { headers: { Accept: "application/json" } }),
+        needsFx
+          ? fetch("/api/worldbox/fx", { headers: { Accept: "application/json" } })
+          : Promise.resolve(null),
+        needsPred
+          ? fetch("/api/worldbox/prediction", { headers: { Accept: "application/json" } })
+          : Promise.resolve(null),
+        needsPool
+          ? fetch("/api/worldbox/house-pool", { headers: { Accept: "application/json" } })
+          : Promise.resolve(null),
       ]);
       if (!aliveRef.current) return;
-      if (fxRes.ok) setFx((await fxRes.json()) as FxResponse);
-      if (prRes.ok) setPred((await prRes.json()) as PredictionResponse);
-      if (hpRes.ok) setPool((await hpRes.json()) as HousePoolResponse);
+      if (fxRes?.ok) setFx((await fxRes.json()) as FxResponse);
+      if (prRes?.ok) setPred((await prRes.json()) as PredictionResponse);
+      if (hpRes?.ok) setPool((await hpRes.json()) as HousePoolResponse);
     } catch {
       /* partial failure ok */
     }
-  }, []);
+  }, [needsFx, needsPred, needsPool]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -270,7 +280,7 @@ export default function WorldBoxFinancePanel({
         return;
       }
       setMsg(describe(json));
-      await refreshAll();
+      void refreshAll();
     } catch {
       setMsg("通信に失敗しました");
     } finally {

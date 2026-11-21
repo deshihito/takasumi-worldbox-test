@@ -125,6 +125,13 @@ function buildSnapshot(
   };
 }
 
+function hasPendingClaim(state: CommoditiesMarketState, actorKey: string): boolean {
+  const claim = state.claims[actorKey];
+  if (!claim) return false;
+  if (claim.coins > 0) return true;
+  return Object.values(claim.items).some((q) => q > 0);
+}
+
 export async function GET(request: Request) {
   const session = getRequestSession(request);
   if (!session) return err("unauthorized", 401);
@@ -135,51 +142,66 @@ export async function GET(request: Request) {
   const ownerKey = sessionOwnerKey(session);
   const isGuest = session.provider === "guest";
 
-  return withUserLock("market:global", async () => {
-    let state = await loadCommoditiesMarket();
-    const myCompany = isGuest ? null : await loadCompanyOf(ownerKey);
+  let [state, myCompany, companies, balance, profile] = await Promise.all([
+    loadCommoditiesMarket(),
+    isGuest ? Promise.resolve(null) : loadCompanyOf(ownerKey),
+    loadAllCompanies(),
+    isGuest ? Promise.resolve(null) : readUserBalance(session.id),
+    loadProfile(ownerKey),
+  ]);
 
-    if (!isGuest) {
+  const needsFlush =
+    !isGuest &&
+    (hasPendingClaim(state, ownerKey) ||
+      (myCompany !== null && hasPendingClaim(state, `company:${myCompany.id}`)));
+
+  if (needsFlush) {
+    await withUserLock("market:global", async () => {
+      state = await loadCommoditiesMarket();
       const flushedPlayer = await flushPlayerMarketClaims(state, ownerKey, session.id);
       state = flushedPlayer.state;
       if (myCompany) {
         const flushedCompany = await flushCompanyMarketClaims(state, myCompany.id, Date.now());
         state = flushedCompany.state;
       }
-    }
+    });
+    const [refreshedCompanies, refreshedBalance, refreshedProfile, refreshedCompany] =
+      await Promise.all([
+        loadAllCompanies(),
+        readUserBalance(session.id),
+        loadProfile(ownerKey),
+        myCompany ? loadCompany(myCompany.id) : Promise.resolve(null),
+      ]);
+    companies = refreshedCompanies;
+    balance = refreshedBalance;
+    profile = refreshedProfile;
+    myCompany = refreshedCompany;
+  }
 
-    const [companies, balance, profile, latestCompany] = await Promise.all([
-      loadAllCompanies(),
-      isGuest ? Promise.resolve(null) : readUserBalance(session.id),
-      loadProfile(ownerKey),
-      myCompany ? loadCompany(myCompany.id) : Promise.resolve(null),
-    ]);
+  const playerItems: Record<string, number> = {};
+  for (const item of ITEMS) {
+    const c = countItem(profile, item.id);
+    if (c > 0) playerItems[item.id] = c;
+  }
 
-    const playerItems: Record<string, number> = {};
-    for (const item of ITEMS) {
-      const c = countItem(profile, item.id);
-      if (c > 0) playerItems[item.id] = c;
-    }
-
-    return NextResponse.json(
-      {
-        guest: isGuest,
-        serverNow: Date.now(),
-        balance,
-        playerItems,
-        company: latestCompany
-          ? {
-              id: latestCompany.id,
-              name: latestCompany.name,
-              assets: latestCompany.assets,
-              inventory: latestCompany.inventory,
-            }
-          : null,
-        ...buildSnapshot(state, companies, ownerKey, latestCompany, selectedItem),
-      },
-      { headers: NO_STORE },
-    );
-  });
+  return NextResponse.json(
+    {
+      guest: isGuest,
+      serverNow: Date.now(),
+      balance,
+      playerItems,
+      company: myCompany
+        ? {
+            id: myCompany.id,
+            name: myCompany.name,
+            assets: myCompany.assets,
+            inventory: myCompany.inventory,
+          }
+        : null,
+      ...buildSnapshot(state, companies, ownerKey, myCompany, selectedItem),
+    },
+    { headers: NO_STORE },
+  );
 }
 
 export async function POST(request: Request) {
@@ -202,8 +224,10 @@ export async function POST(request: Request) {
 
   return withUserLock("market:global", async () => {
     const now = Date.now();
-    let state = await loadCommoditiesMarket();
-    const myCompanyInitial = await loadCompanyOf(ownerKey);
+    let [state, myCompanyInitial] = await Promise.all([
+      loadCommoditiesMarket(),
+      loadCompanyOf(ownerKey),
+    ]);
 
     const flushed = await flushPlayerMarketClaims(state, ownerKey, discordId);
     state = flushed.state;
@@ -332,6 +356,7 @@ export async function POST(request: Request) {
       // プレイヤー個人としての発注
       let profile = await loadProfile(ownerKey);
       const escrowCost = price * qty;
+      let knownBalance: number | undefined;
 
       if (side === "buy") {
         const charged = await chargeUserChunked(ownerKey, discordId, escrowCost, "market_buy", {
@@ -340,6 +365,7 @@ export async function POST(request: Request) {
         if (charged.state === "insufficient_funds") return err("not_enough_coins", 409);
         if (charged.state === "unavailable") return err("economy_unavailable", 503);
         if (charged.state !== "done") return err("economy_failed", 409);
+        knownBalance = charged.newBalance;
       } else {
         const removed = removeItem(profile, item.id, qty);
         if (!removed) return err("not_enough_items", 409);
@@ -369,32 +395,40 @@ export async function POST(request: Request) {
       const res = placed.result;
       if (res.immediateItemsReceived > 0) {
         profile = addItem(profile, item.id, res.immediateItemsReceived);
-        await storeProfile(ownerKey, profile);
       }
-      if (res.immediateCoinsReceived > 0) {
-        await payoutUserChunked(ownerKey, discordId, res.immediateCoinsReceived, "market_sale");
-      }
-      if (res.refundCoins > 0) {
-        await payoutUserChunked(ownerKey, discordId, res.refundCoins, "market_refund");
-      }
-
-      if (!(await storeCommoditiesMarket(res.state))) return err("store_failed", 503);
-
-      const [companies, balance, refreshedProfile] = await Promise.all([
+      const totalImmediatePayout = res.immediateCoinsReceived + res.refundCoins;
+      const [savedMarket, , payoutSale, payoutRefund, companies] = await Promise.all([
+        storeCommoditiesMarket(res.state),
+        res.immediateItemsReceived > 0 ? storeProfile(ownerKey, profile) : Promise.resolve(true),
+        res.immediateCoinsReceived > 0
+          ? payoutUserChunked(ownerKey, discordId, res.immediateCoinsReceived, "market_sale")
+          : Promise.resolve(null),
+        res.refundCoins > 0
+          ? payoutUserChunked(ownerKey, discordId, res.refundCoins, "market_refund")
+          : Promise.resolve(null),
         loadAllCompanies(),
-        readUserBalance(discordId),
-        loadProfile(ownerKey),
       ]);
+      if (!savedMarket) return err("store_failed", 503);
+
+      const finalBalance =
+        totalImmediatePayout > 0
+          ? (payoutRefund?.newBalance ??
+            payoutSale?.newBalance ??
+            (await readUserBalance(discordId)))
+          : knownBalance !== undefined
+            ? knownBalance
+            : await readUserBalance(discordId);
+
       const playerItems: Record<string, number> = {};
       for (const it of ITEMS) {
-        const c = countItem(refreshedProfile, it.id);
+        const c = countItem(profile, it.id);
         if (c > 0) playerItems[it.id] = c;
       }
       return NextResponse.json(
         {
           ok: true,
           tradesCount: res.trades.length,
-          balance,
+          balance: finalBalance,
           playerItems,
           company: myCompanyInitial
             ? {

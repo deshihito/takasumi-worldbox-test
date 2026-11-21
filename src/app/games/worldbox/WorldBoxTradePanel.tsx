@@ -156,15 +156,30 @@ export default function WorldBoxTradePanel({
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         profile?: PlayerProfile;
+        balance?: number | null;
+        offer?: DirectTradeOffer;
+        offerId?: string;
+        status?: DirectTradeOffer["status"];
       };
       if (!res.ok) {
         setMsg(`エラー: ${json.error ?? res.status}`);
         return;
       }
+      if (typeof json.balance === "number") setBalance(json.balance);
       if (json.profile && onProfileChange) onProfileChange(json.profile);
-      await reload();
-      if (onStatusChange) onStatusChange();
+      if (json.offer) {
+        const nextOffer = json.offer;
+        setOffers((prev) => [nextOffer, ...prev.filter((o) => o.id !== nextOffer.id)]);
+      } else if (json.offerId && json.status) {
+        const targetId = json.offerId;
+        const nextStatus = json.status;
+        setOffers((prev) =>
+          prev.map((o) => (o.id === targetId ? { ...o, status: nextStatus } : o)),
+        );
+      }
       setMsg(successMsg);
+      void reload();
+      if (onStatusChange) onStatusChange();
     } finally {
       setBusy(false);
     }
@@ -182,15 +197,17 @@ export default function WorldBoxTradePanel({
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         profile?: PlayerProfile;
+        balance?: number | null;
       };
       if (!res.ok) {
         setMsg(`エラー: ${json.error ?? res.status}`);
         return;
       }
+      if (typeof json.balance === "number") setBalance(json.balance);
       if (json.profile && onProfileChange) onProfileChange(json.profile);
-      await reload();
-      if (onStatusChange) onStatusChange();
       setMsg(successMsg);
+      void reload();
+      if (onStatusChange) onStatusChange();
     } finally {
       setBusy(false);
     }

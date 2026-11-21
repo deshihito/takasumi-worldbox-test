@@ -78,14 +78,17 @@ export async function POST(request: Request) {
     return errorResponse("not_at_bank", 409);
   }
   const userKey = sessionOwnerKey(session);
-  const submitted = await submitEconomyOp(op);
+  const submitted = await submitEconomyOp(op, { freshId: true });
   if (submitted.state === "unavailable") return errorResponse("economy_failed", 500);
   const finalOp =
     submitted.state === "pending"
       ? ((await waitForOpDone(userKey, op.id)) ?? submitted.op)
       : submitted.op;
   if (finalOp.status !== "pending") {
-    const balance = await readUserBalance(session.id);
+    const balance =
+      submitted.state !== "pending" && submitted.newBalance !== undefined
+        ? submitted.newBalance
+        : await readUserBalance(session.id);
     return NextResponse.json(
       { ok: true, op: finalOp, ...(balance !== null ? { balance } : {}) },
       { headers: NO_STORE },
