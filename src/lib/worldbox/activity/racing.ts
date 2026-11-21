@@ -112,14 +112,6 @@ export interface RaceCore {
   margins: Record<number, string>;
 }
 
-function bandOfDistance(m: number): DistanceBand {
-  if (m <= 1400) return "スプリント";
-  if (m <= 1800) return "マイル";
-  if (m <= 2200) return "中距離";
-  if (m <= 2500) return "中長距離";
-  return "ステイヤー";
-}
-
 function bandIndex(band: DistanceBand): number {
   return DISTANCE_BANDS.indexOf(band);
 }
