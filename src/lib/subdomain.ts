@@ -25,14 +25,3 @@ export function subdomainRedirectUrl(args: {
   if (!path) return null;
   return `https://${host}${path}${args.search}`;
 }
-
-export function onePrompterRedirectUrl(args: {
-  pathname: string;
-  forwardedHost: string | null | undefined;
-  hostname: string;
-  search: string;
-}): string | null {
-  const url = subdomainRedirectUrl(args);
-  if (!url) return null;
-  return effectiveHost(args.forwardedHost, args.hostname) === ONE_PROMPTER_HOST ? url : null;
-}
