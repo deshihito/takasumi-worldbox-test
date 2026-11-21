@@ -258,7 +258,6 @@ const cardBox: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.3)",
   animation: "wb-casino-deal 0.28s ease-out",
 };
-const tabBtn: React.CSSProperties = { ...btn, minHeight: 32, padding: "2px 10px", fontSize: 13 };
 
 const JUICE_CSS = `
 @keyframes wb-casino-pop { 0% { transform: scale(0.6); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }

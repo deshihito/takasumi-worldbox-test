@@ -10,7 +10,6 @@ import type { PlayerProfile } from "@/lib/worldbox/player/profile";
 import type {
   ActiveDeliveryOrder,
   CareerDef,
-  CareerId,
   CertificationDef,
   JobProfile,
   JobTaskPrompt,

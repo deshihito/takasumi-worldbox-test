@@ -32,7 +32,7 @@ import {
   isWaterAt,
   stepMove,
 } from "@/lib/worldbox/player/move";
-import { isNightPhase, nightAmount, phaseAtTime } from "@/lib/worldbox/world/daynight";
+import { nightAmount, phaseAtTime } from "@/lib/worldbox/world/daynight";
 import {
   advanceWalkPhase,
   attackSwingAngle,
@@ -107,7 +107,6 @@ import {
 import type { NationView, NationsResponse } from "@/lib/worldbox/social/nations";
 import {
   L_PLAZA,
-  L_SAND,
   L_VOID,
   LOBBY_ENTRY,
   LOBBY_FLOOR_FALLBACK,
@@ -328,7 +327,6 @@ import {
   settlementSolidTilesInRect,
   settlementSurfaceAt,
   settlementsNear,
-  type Settlement,
   type SettlementBuilding,
   type SettlementBuildingKind,
 } from "@/lib/worldbox/world/settlements";

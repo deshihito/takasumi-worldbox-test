@@ -32,7 +32,6 @@ import {
   type PlayerProfile,
 } from "@/lib/worldbox/player/profile";
 import { itemById, recipeById, recipeKind } from "@/lib/worldbox/economy/items";
-import { findPresenceOwnerKey, isPresenceEnabled } from "@/lib/worldbox/player/presence-online";
 import {
   checkBuyGenre,
   checkBuySold,
@@ -200,10 +199,6 @@ async function handlePost(request: Request, session: AuthedSession) {
     if (!discordId) return { response: statusError("discord_required", 403) };
     if (!isEconomyEnabled()) return { response: statusError("economy_unavailable", 503) };
     return { discordId };
-  };
-
-  const stationGate = async (station: string, error: string) => {
-    return (await loadMyLobbyStation(ownerKey)) === station ? null : statusError(error, 409);
   };
 
   const workGate = async (kind: StationKind) => {

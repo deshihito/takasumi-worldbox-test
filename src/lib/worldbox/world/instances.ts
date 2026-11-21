@@ -9,7 +9,6 @@ import {
 } from "./lobby";
 import { T_GRASS, T_ROCK, tilesSource, type TopDownMap } from "./mapgen";
 import { makeRng } from "../core/rng";
-import { specialObjectById, type SpecialObjectDef } from "./objects";
 
 export type InstanceKind = "cave" | "ruins" | "dungeon";
 

@@ -39,7 +39,6 @@ import {
 import { awardMmoCoins, spendMmoCoins } from "@/lib/worldbox/economy/mmo-wallet";
 import { payoutUserChunked } from "@/lib/worldbox/economy/settlement";
 import { incrementQuestProgress } from "@/lib/worldbox/social/mmo-events-online";
-import { depositCityTreasury, loadGovernanceState } from "@/lib/worldbox/social/governance-online";
 import { withUserLock } from "@/lib/worldbox/core/user-lock";
 
 export const runtime = "nodejs";
